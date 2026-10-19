@@ -49,7 +49,9 @@
         #reader { width: 100%; margin-bottom: 10px; border-radius: 8px; overflow: hidden; }
         .mode-switch { background: #eff6ff; padding: 10px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #bfdbfe; }
 
-        /* تنسيقات خاصة بتاب تغيير التصنيف ومربع التحديد الصغير جداً */
+        /* تنسيقات خاصة بتاب تغيير التصنيف ومربع البحث والتحديد */
+        .search-box-wrap { background: #f1f5f9; padding: 10px; border-radius: 8px; margin-top: 10px; margin-bottom: 6px; border: 1px solid #cbd5e1; }
+        .search-box-wrap input { border: 2px solid #3b82f6; background: #fff; font-weight: bold; margin: 0; }
         .tiny-chk { width: 16px !important; height: 16px !important; margin: 0 !important; padding: 0 !important; cursor: pointer; accent-color: #2563eb; vertical-align: middle; }
         .col-chk { width: 28px; padding: 4px !important; }
         .barcode-cell { font-family: monospace; font-size: 13px; font-weight: bold; color: #0f172a; letter-spacing: 0.5px; }
@@ -251,6 +253,12 @@
                 </div>
             </div>
 
+            <!-- مربع البحث البارز في تاب تغيير التصنيف -->
+            <div class="search-box-wrap">
+                <label style="margin-top:0; margin-bottom:5px; color:#1e3a8a;">🔍 البحث السريع في الشرائح:</label>
+                <input type="text" id="catSearchInput" placeholder="ابحث بالباركود الكامل أو المختصر أو الفرع أو الهوية..." oninput="onFilterChange()">
+            </div>
+
             <!-- شريط تغيير التصنيف الذي يظهر عند تحديد شريحة أو أكثر -->
             <div id="bulkEditBar" class="bulk-edit-bar">
                 <div class="bulk-title">
@@ -436,14 +444,12 @@
             renderBranches();
             renderCustomers();
 
-            // فتح تاب تغيير التصنيف تلقائياً إذا تم تمرير الرابط ?tab=cat
             const urlParams = new URLSearchParams(window.location.search);
             if (urlParams.get('tab') === 'cat') {
                 switchMainTab('cat');
             }
         }
 
-        // التبديل بين التاب الرئيسي وتاب تغيير التصنيف
         function switchMainTab(tab) {
             const scanSec = document.getElementById('scanTabSection');
             const catSec = document.getElementById('catTabSection');
@@ -466,7 +472,6 @@
             }
         }
 
-        // تحديث قائمة التصنيفات في فلتر تاب تغيير التصنيف
         function updateCatFilterDropdown() {
             const sel = document.getElementById('filterCategory');
             const currentVal = sel.value || 'all';
@@ -497,6 +502,8 @@
         function getFilteredCodesForCatTab() {
             const statusFilter = document.getElementById('filterStatus').value;
             const catFilter = document.getElementById('filterCategory').value;
+            const searchInput = document.getElementById('catSearchInput');
+            const search = searchInput ? searchInput.value.trim().toLowerCase() : '';
             const result = [];
 
             for (let code in sims) {
@@ -504,6 +511,18 @@
                 const itemCat = item.category || 'بدون تصنيف';
                 if (statusFilter !== 'all' && item.status !== statusFilter) continue;
                 if (catFilter !== 'all' && itemCat !== catFilter) continue;
+
+                if (search) {
+                    const matchCode = code.toLowerCase().includes(search);
+                    const matchShort = item.short && item.short.toLowerCase().includes(search);
+                    const matchCat = item.category && item.category.toLowerCase().includes(search);
+                    const matchBranch = item.branch && item.branch.toLowerCase().includes(search);
+                    const matchCustomer = item.customer && item.customer.toLowerCase().includes(search);
+                    const matchId = item.idNumber && item.idNumber.toLowerCase().includes(search);
+                    const matchCompany = item.company && item.company.toLowerCase().includes(search);
+                    if (!matchCode && !matchShort && !matchCat && !matchBranch && !matchCustomer && !matchId && !matchCompany) continue;
+                }
+
                 result.push(code);
             }
             return result;
@@ -513,7 +532,6 @@
             const tbody = document.getElementById('catSimTable');
             tbody.innerHTML = '';
 
-            // تنظيف أي أكواد محددة لم تعد موجودة في قاعدة البيانات
             for (let code of selectedSimCodes) {
                 if (!sims[code]) selectedSimCodes.delete(code);
             }
@@ -521,7 +539,7 @@
             const filteredCodes = getFilteredCodesForCatTab();
 
             if (filteredCodes.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="8" style="padding:18px; color:#64748b; font-weight:bold;">لا توجد شرائح مطابقة للفلتر المختار</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="8" style="padding:18px; color:#64748b; font-weight:bold;">لا توجد شرائح مطابقة للبحث أو الفلتر المختار</td></tr>`;
                 updateBulkBarUI();
                 return;
             }
