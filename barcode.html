@@ -226,6 +226,54 @@
         let lastScanned = "";
         let lastScanTime = 0;
 
+        // محرك الصوت الموحد لتخطي حظر الصوت في المتصفحات
+        let audioCtx = null;
+        function unlockAudio() {
+            try {
+                if (!audioCtx) {
+                    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+                if (audioCtx.state === 'suspended') {
+                    audioCtx.resume();
+                }
+            } catch(e) {}
+        }
+
+        function playBeep(success = true) {
+            try {
+                unlockAudio();
+                if (!audioCtx) return;
+
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                if (success) {
+                    // نغمة سريعة وواضحة جداً تشبه قارئ الباركود الاحترافي
+                    osc.type = "sine";
+                    osc.frequency.setValueAtTime(1400, now);
+                    osc.frequency.setValueAtTime(1800, now + 0.06);
+                    gain.gain.setValueAtTime(0.6, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.16);
+                    osc.start(now);
+                    osc.stop(now + 0.16);
+                    if (navigator.vibrate) navigator.vibrate(70);
+                } else {
+                    // نغمة تنبيه منخفضة عند الخطأ أو تكرار الشريحة
+                    osc.type = "sawtooth";
+                    osc.frequency.setValueAtTime(220, now);
+                    gain.gain.setValueAtTime(0.5, now);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+                    osc.start(now);
+                    osc.stop(now + 0.35);
+                    if (navigator.vibrate) navigator.vibrate([120, 60, 120]);
+                }
+            } catch(e) {}
+        }
+
         function saveStickyValues() {}
 
         function getTodayStr() {
@@ -375,18 +423,6 @@
             keys.forEach(cat => sel.innerHTML += `<option value="${cat}">${cat} (${counts[cat]})</option>`);
         }
 
-        function playBeep(success = true) {
-            try {
-                const ctx = new (window.AudioContext || window.webkitAudioContext)();
-                const osc = ctx.createOscillator();
-                osc.type = success ? "sine" : "sawtooth";
-                osc.frequency.value = success ? 880 : 220;
-                osc.connect(ctx.destination);
-                osc.start();
-                setTimeout(() => osc.stop(), success ? 120 : 350);
-            } catch(e) {}
-        }
-
         function showMessage(text, isError = false) {
             const msg = document.getElementById('msg');
             msg.style.display = 'block';
@@ -405,6 +441,9 @@
         }
 
         async function toggleLiveCamera() {
+            // تفعيل الصوت فور الضغط على الزر لضمان عمله مع الكاميرا
+            unlockAudio();
+
             const btn = document.getElementById('liveBtn');
             if (isLiveRunning) {
                 await html5QrCode.stop();
@@ -462,6 +501,9 @@
             const code = (scannedCode || input.value).trim();
             if (!code) return;
 
+            const now = Date.now();
+            if (code === lastScanned && (now - lastScanTime) < 2000) return;
+
             const catLetter = document.getElementById('catLetter').value;
             const catNumber = document.getElementById('catNumber').value;
             const idNum = document.getElementById('idNumber').value.trim();
@@ -491,6 +533,8 @@
 
             if (sims[code]) {
                 if (sims[code].category === category && sims[code].status === 'متاح') {
+                    lastScanned = code;
+                    lastScanTime = now;
                     playBeep(false);
                     showMessage(`⚠️ الشريحة (${shortCode}) مسجلة مسبقاً بنفس التصنيف (${category})!`, true);
                     input.value = '';
@@ -498,8 +542,6 @@
                 }
             }
 
-            const now = Date.now();
-            if (code === lastScanned && (now - lastScanTime) < 2000) return;
             lastScanned = code;
             lastScanTime = now;
 
