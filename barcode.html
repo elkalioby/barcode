@@ -16,6 +16,11 @@
         .row-flex { display: flex; gap: 10px; align-items: center; }
         .row-flex > * { flex: 1; }
         
+        /* شريط التابات العلوي */
+        .top-tabs { display: flex; gap: 8px; margin-bottom: 14px; background: #e2e8f0; padding: 6px; border-radius: 10px; }
+        .tab-btn { flex: 1; padding: 11px; margin: 0; border: none; border-radius: 8px; font-weight: bold; font-size: 14px; cursor: pointer; background: transparent; color: #475569; transition: 0.2s; }
+        .tab-btn.active { background: #1e3a8a; color: white; box-shadow: 0 2px 6px rgba(30,58,138,0.25); }
+
         .branch-row { display: flex; gap: 6px; align-items: center; width: 100%; }
         .branch-row select { flex: 1; min-width: 140px; background-color: #f8fafc; color: #1e3a8a; font-size: 14px; font-weight: bold; border: 2px solid #93c5fd; }
         
@@ -39,17 +44,32 @@
         th { background: #1e293b; color: white; }
         .status-in { color: #16a34a; font-weight: bold; }
         .status-out { color: #dc2626; font-weight: bold; }
-        #msg { padding: 12px; border-radius: 8px; text-align: center; font-weight: bold; display: none; margin-bottom: 10px; }
+        #msg, #catMsg { padding: 12px; border-radius: 8px; text-align: center; font-weight: bold; display: none; margin-bottom: 10px; }
         
         #reader { width: 100%; margin-bottom: 10px; border-radius: 8px; overflow: hidden; }
-
         .mode-switch { background: #eff6ff; padding: 10px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #bfdbfe; }
+
+        /* تنسيقات خاصة بتاب تغيير التصنيف ومربع التحديد الصغير جداً */
+        .tiny-chk { width: 16px !important; height: 16px !important; margin: 0 !important; padding: 0 !important; cursor: pointer; accent-color: #2563eb; vertical-align: middle; }
+        .col-chk { width: 28px; padding: 4px !important; }
+        .barcode-cell { font-family: monospace; font-size: 13px; font-weight: bold; color: #0f172a; letter-spacing: 0.5px; }
+        .bulk-edit-bar { display: none; background: #eff6ff; border: 2px solid #3b82f6; padding: 12px; border-radius: 10px; margin-top: 12px; margin-bottom: 8px; }
+        .bulk-title { font-weight: bold; color: #1e3a8a; font-size: 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+        .btn-bulk-save { background: #16a34a; color: white; border: none; font-weight: bold; font-size: 14px; padding: 11px; cursor: pointer; margin-top: 6px; }
+        tr.selected-row { background-color: #dbeafe !important; }
     </style>
 </head>
 <body>
 
-    <h3 style="text-align:center; margin-top:0; color:#1e3a8a;">📱 نظام تسجيل الشرائح</h3>
+    <h3 style="text-align:center; margin-top:0; color:#1e3a8a;">📱 نظام إدارة وتسجيل الشرائح</h3>
 
+    <!-- شريط التابات الرئيسي -->
+    <div class="top-tabs">
+        <button id="tabScanBtn" class="tab-btn active" onclick="switchMainTab('scan')">📥 تسجيل وصرف الشرائح</button>
+        <button id="tabCatBtn" class="tab-btn" onclick="switchMainTab('cat')">🔄 تغيير تصنيف</button>
+    </div>
+
+    <!-- إحصائيات عامة -->
     <div class="card" style="padding: 10px; margin-bottom: 12px;">
         <div class="stats">
             <span>الإجمالي: <span id="totalCount">0</span></span>
@@ -58,147 +78,217 @@
         </div>
     </div>
 
-    <div class="card">
-        <div id="msg"></div>
+    <!-- ========================================================================= -->
+    <!-- التاب الأول: تسجيل وصرف الشرائح -->
+    <!-- ========================================================================= -->
+    <div id="scanTabSection">
+        <div class="card">
+            <div id="msg"></div>
 
-        <div class="mode-switch" id="modeSwitchBox">
-            <label style="margin-top:0;">نوع الحركة:</label>
-            <select id="actionType" onchange="switchMode()">
-                <option value="in">📥 إضافة للمخزن (وارد جديد)</option>
-                <option value="out" id="outOpt">📤 صرف من المخزن</option>
-            </select>
-        </div>
-
-        <!-- ================= قسم الوارد ================= -->
-        <div id="inSection">
-            <div class="cam-controls">
-                <button id="liveBtn" class="btn-live" onclick="toggleLiveCamera()">
-                    🎥 تشغيل الكاميرا السريعة (مسح الباركود)
-                </button>
-                <button id="torchBtn" class="btn-torch" onclick="toggleTorch()" title="تشغيل/إيقاف الكشاف">
-                    🔦
-                </button>
+            <div class="mode-switch" id="modeSwitchBox">
+                <label style="margin-top:0;">نوع الحركة:</label>
+                <select id="actionType" onchange="switchMode()">
+                    <option value="in">📥 إضافة للمخزن (وارد جديد)</option>
+                    <option value="out" id="outOpt">📤 صرف من المخزن</option>
+                </select>
             </div>
-            <div id="reader"></div>
 
-            <div class="row-flex">
-                <div>
-                    <label>الشركة:</label>
-                    <select id="companyName" onchange="saveStickyValues()">
-                        <option value="تلقائي">✨ تلقائي من الباركود</option>
-                        <option value="موبايلي">موبايلي (Mobily)</option>
-                        <option value="STC سوا">إس تي سي (STC)</option>
-                        <option value="زين">زين (Zain)</option>
-                        <option value="سلام">سلام (Salam)</option>
-                        <option value="فيرجن">فيرجن (Virgin)</option>
-                        <option value="ليبارا">ليبارا (Lebara)</option>
-                        <option value="ريد بُل">ريد بُل (Red Bull)</option>
+            <!-- قسم الوارد -->
+            <div id="inSection">
+                <div class="cam-controls">
+                    <button id="liveBtn" class="btn-live" onclick="toggleLiveCamera()">
+                        🎥 تشغيل الكاميرا السريعة (مسح الباركود)
+                    </button>
+                    <button id="torchBtn" class="btn-torch" onclick="toggleTorch()" title="تشغيل/إيقاف الكشاف">
+                        🔦
+                    </button>
+                </div>
+                <div id="reader"></div>
+
+                <div class="row-flex">
+                    <div>
+                        <label>الشركة:</label>
+                        <select id="companyName" onchange="saveStickyValues()">
+                            <option value="تلقائي">✨ تلقائي من الباركود</option>
+                            <option value="موبايلي">موبايلي (Mobily)</option>
+                            <option value="STC سوا">إس تي سي (STC)</option>
+                            <option value="زين">زين (Zain)</option>
+                            <option value="سلام">سلام (Salam)</option>
+                            <option value="فيرجن">فيرجن (Virgin)</option>
+                            <option value="ليبارا">ليبارا (Lebara)</option>
+                            <option value="ريد بُل">ريد بُل (Red Bull)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>تاريخ الوارد:</label>
+                        <input type="date" id="inDate" onchange="saveStickyValues()">
+                    </div>
+                </div>
+
+                <label>وقت الوارد (تلقائي):</label>
+                <input type="text" id="inTimeDisplay" readonly style="background:#e2e8f0; font-weight:bold; color:#1e3a8a;">
+
+                <label>التصنيف (من A01 إلى Z100):</label>
+                <div class="row-flex">
+                    <select id="catLetter" onchange="saveStickyValues()">
+                        <option value="">-- اختر الحرف --</option>
+                    </select>
+                    <select id="catNumber" onchange="saveStickyValues()">
+                        <option value="">-- اختر الرقم --</option>
                     </select>
                 </div>
-                <div>
-                    <label>تاريخ الوارد:</label>
-                    <input type="date" id="inDate" onchange="saveStickyValues()">
+
+                <label>رقم الهوية:</label>
+                <input type="text" id="idNumber" placeholder="اكتب رقم الهوية..." oninput="saveStickyValues()">
+
+                <label>الفرع: <span id="activeBranchLabel" class="selected-badge">لم يتم الاختيار</span></label>
+                <div class="branch-row">
+                    <select id="branchSelect" onchange="onBranchChange()">
+                        <option value="">-- اختر الفرع أولاً --</option>
+                    </select>
+                    <button type="button" class="btn-icon btn-add-branch" onclick="addNewBranch()" title="إضافة فرع جديد">➕</button>
+                    <button type="button" class="btn-icon btn-del-branch" onclick="deleteBranch()" title="حذف الفرع المختار">❌</button>
                 </div>
+
+                <label>الباركود:</label>
+                <input type="number" id="barcodeInput" placeholder="امسح الباركود أو اكتبه هنا">
+                <button class="btn-manual" onclick="handleInScan()">تسجيل الشريحة بالمخزن</button>
             </div>
 
-            <label>وقت الوارد (تلقائي):</label>
-            <input type="text" id="inTimeDisplay" readonly style="background:#e2e8f0; font-weight:bold; color:#1e3a8a;">
+            <!-- قسم الصرف -->
+            <div id="outSection" style="display:none;">
+                <label>اسم العميل:</label>
+                <div class="branch-row" style="margin-bottom: 8px;">
+                    <select id="customerSelect" onchange="onCustomerChange()"></select>
+                    <button type="button" class="btn-icon btn-add-branch" onclick="addNewCustomer()" title="إضافة عميل جديد">➕</button>
+                    <button type="button" class="btn-icon btn-del-branch" onclick="deleteCustomer()" title="حذف العميل المختار">❌</button>
+                </div>
 
-            <label>التصنيف (من A01 إلى Z100):</label>
-            <div class="row-flex">
-                <select id="catLetter" onchange="saveStickyValues()">
-                    <option value="">-- اختر الحرف --</option>
-                </select>
-                <select id="catNumber" onchange="saveStickyValues()">
-                    <option value="">-- اختر الرقم --</option>
-                </select>
+                <div class="row-flex">
+                    <div style="flex: 2;">
+                        <label>التصنيف:</label>
+                        <select id="outCategorySelect" style="font-size: 15px; padding: 11px;"></select>
+                    </div>
+                    <div style="flex: 0.8;">
+                        <label>العدد:</label>
+                        <input type="number" id="outQty" min="1" value="1" placeholder="الكمية" oninput="calculateTotal()" style="padding: 11px;">
+                    </div>
+                </div>
+
+                <div class="row-flex">
+                    <div>
+                        <label>سعر الشريحة:</label>
+                        <input type="number" id="outPrice" value="0" min="0" placeholder="السعر..." oninput="calculateTotal()">
+                    </div>
+                    <div>
+                        <label>الإجمالي التلقائي:</label>
+                        <input type="text" id="outTotal" readonly style="background:#e2e8f0; font-weight:bold; color:#1e3a8a;" value="0.00">
+                    </div>
+                </div>
+
+                <div class="row-flex">
+                    <div>
+                        <label>التاريخ:</label>
+                        <input type="date" id="outDate" style="padding:7px;">
+                    </div>
+                    <div>
+                        <label>الوقت:</label>
+                        <input type="time" id="outTime" style="padding:7px;">
+                    </div>
+                </div>
+
+                <button class="btn-out-submit" onclick="handleOutDispense()">📤 تأكيد صرف العدد للعميل</button>
             </div>
-
-            <label>رقم الهوية:</label>
-            <input type="text" id="idNumber" placeholder="اكتب رقم الهوية..." oninput="saveStickyValues()">
-
-            <label>الفرع: <span id="activeBranchLabel" class="selected-badge">لم يتم الاختيار</span></label>
-            <div class="branch-row">
-                <select id="branchSelect" onchange="onBranchChange()">
-                    <option value="">-- اختر الفرع أولاً --</option>
-                </select>
-                <button type="button" class="btn-icon btn-add-branch" onclick="addNewBranch()" title="إضافة فرع جديد">➕</button>
-                <button type="button" class="btn-icon btn-del-branch" onclick="deleteBranch()" title="حذف الفرع المختار">❌</button>
-            </div>
-
-            <label>الباركود:</label>
-            <input type="number" id="barcodeInput" placeholder="امسح الباركود أو اكتبه هنا">
-            <button class="btn-manual" onclick="handleInScan()">تسجيل الشريحة بالمخزن</button>
         </div>
 
-        <!-- ================= قسم الصرف ================= -->
-        <div id="outSection" style="display:none;">
-            <label>اسم العميل:</label>
-            <div class="branch-row" style="margin-bottom: 8px;">
-                <select id="customerSelect" onchange="onCustomerChange()"></select>
-                <button type="button" class="btn-icon btn-add-branch" onclick="addNewCustomer()" title="إضافة عميل جديد">➕</button>
-                <button type="button" class="btn-icon btn-del-branch" onclick="deleteCustomer()" title="حذف العميل المختار">❌</button>
+        <div class="card">
+            <input type="text" id="searchInput" placeholder="🔍 البحث بالباركود أو التصنيف أو الفرع أو اليوزر" oninput="renderTable()">
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th id="thDel">حذف</th>
+                            <th>الرقم المختصر</th>
+                            <th>التصنيف</th>
+                            <th>الشركة</th>
+                            <th>رقم الهوية</th>
+                            <th>الفرع / العميل</th>
+                            <th>الحالة</th>
+                            <th>التاريخ والوقت</th>
+                            <th>المستخدم (اليوزر)</th>
+                            <th>الباركود الكامل</th>
+                        </tr>
+                    </thead>
+                    <tbody id="simTable"></tbody>
+                </table>
             </div>
-
-            <div class="row-flex">
-                <div style="flex: 2;">
-                    <label>التصنيف:</label>
-                    <select id="outCategorySelect" style="font-size: 15px; padding: 11px;"></select>
-                </div>
-                <div style="flex: 0.8;">
-                    <label>العدد:</label>
-                    <input type="number" id="outQty" min="1" value="1" placeholder="الكمية" oninput="calculateTotal()" style="padding: 11px;">
-                </div>
-            </div>
-
-            <div class="row-flex">
-                <div>
-                    <label>سعر الشريحة:</label>
-                    <input type="number" id="outPrice" value="0" min="0" placeholder="السعر..." oninput="calculateTotal()">
-                </div>
-                <div>
-                    <label>الإجمالي التلقائي:</label>
-                    <input type="text" id="outTotal" readonly style="background:#e2e8f0; font-weight:bold; color:#1e3a8a;" value="0.00">
-                </div>
-            </div>
-
-            <div class="row-flex">
-                <div>
-                    <label>التاريخ:</label>
-                    <input type="date" id="outDate" style="padding:7px;">
-                </div>
-                <div>
-                    <label>الوقت:</label>
-                    <input type="time" id="outTime" style="padding:7px;">
-                </div>
-            </div>
-
-            <button class="btn-out-submit" onclick="handleOutDispense()">📤 تأكيد صرف العدد للعميل</button>
+            <button class="btn-export" onclick="exportCSV()">📊 تحميل الكشف الكامل في ملف Excel</button>
         </div>
     </div>
 
-    <div class="card">
-        <input type="text" id="searchInput" placeholder="🔍 البحث بالباركود أو التصنيف أو الفرع أو اليوزر" oninput="renderTable()">
-        <div class="table-wrap">
-            <table>
-                <thead>
-                    <tr>
-                        <th id="thDel">حذف</th>
-                        <th>الرقم المختصر</th>
-                        <th>التصنيف</th>
-                        <th>الشركة</th>
-                        <th>رقم الهوية</th>
-                        <th>الفرع / العميل</th>
-                        <th>الحالة</th>
-                        <th>التاريخ والوقت</th>
-                        <th>المستخدم (اليوزر)</th>
-                        <th>الباركود الكامل</th>
-                    </tr>
-                </thead>
-                <tbody id="simTable"></tbody>
-            </table>
+    <!-- ========================================================================= -->
+    <!-- التاب الثاني: تغيير تصنيف -->
+    <!-- ========================================================================= -->
+    <div id="catTabSection" style="display:none;">
+        <div class="card">
+            <div id="catMsg"></div>
+
+            <!-- الفلاتر العلوية (الحالة + التصنيف) -->
+            <div class="row-flex">
+                <div>
+                    <label style="margin-top:0;">فلتر الحالة:</label>
+                    <select id="filterStatus" onchange="onFilterChange()">
+                        <option value="all">الكل (متاح ومنصرف)</option>
+                        <option value="متاح">متاح</option>
+                        <option value="منصرف">منصرف</option>
+                    </select>
+                </div>
+                <div>
+                    <label style="margin-top:0;">التصنيف:</label>
+                    <select id="filterCategory" onchange="onFilterChange()">
+                        <option value="all">الكل (جميع التصنيفات)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- شريط تغيير التصنيف الذي يظهر عند تحديد شريحة أو أكثر -->
+            <div id="bulkEditBar" class="bulk-edit-bar">
+                <div class="bulk-title">
+                    <span>✅ تم تحديد (<span id="selectedCountBadge">0</span>) شريحة</span>
+                    <button type="button" onclick="clearAllSelections()" style="width:auto; padding:4px 10px; font-size:12px; background:#ef4444; color:white; border:none; margin:0; cursor:pointer;">إلغاء التحديد</button>
+                </div>
+                <label style="margin-top:4px; color:#1e3a8a;">اختر التصنيف الجديد للشرائح المحددة:</label>
+                <div class="row-flex">
+                    <select id="bulkCatLetter">
+                        <option value="">-- اختر الحرف --</option>
+                    </select>
+                    <select id="bulkCatNumber">
+                        <option value="">-- اختر الرقم --</option>
+                    </select>
+                </div>
+                <button type="button" class="btn-bulk-save" onclick="applyBulkCategoryChange()">💾 حفظ وتغيير التصنيف للمحدد</button>
+            </div>
+
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                        <tr>
+                            <th class="col-chk" title="تحديد الكل">
+                                <input type="checkbox" id="selectAllChk" class="tiny-chk" onchange="toggleSelectAll(this)">
+                            </th>
+                            <th>الباركود الكامل</th>
+                            <th>التصنيف</th>
+                            <th>الحالة</th>
+                            <th>الرقم المختصر</th>
+                            <th>الشركة</th>
+                            <th>الفرع / العميل</th>
+                            <th>التاريخ والوقت</th>
+                        </tr>
+                    </thead>
+                    <tbody id="catSimTable"></tbody>
+                </table>
+            </div>
         </div>
-        <button class="btn-export" onclick="exportCSV()">📊 تحميل الكشف الكامل في ملف Excel</button>
     </div>
 
     <script>
@@ -226,8 +316,8 @@
         let sims = {};
         let branches = [];
         let customers = [];
+        let selectedSimCodes = new Set();
 
-        // تهيئة محرك الكاميرا بأقصى سرعة مع تفعيل قارئ الهاردوير وتحديد باركود الشرائح فقط
         const scannerConfig = {
             experimentalFeatures: {
                 useBarCodeDetectorIfSupported: true
@@ -309,15 +399,32 @@
 
         document.getElementById('inTimeDisplay').value = getTimeStr();
 
-        db.ref('simInventory').on('value', snap => { sims = snap.val() || {}; renderTable(); updateOutCategories(); });
+        db.ref('simInventory').on('value', snap => {
+            sims = snap.val() || {};
+            renderTable();
+            updateOutCategories();
+            updateCatFilterDropdown();
+            renderCategoryTabTable();
+        });
         db.ref('simBranches').on('value', snap => { const val = snap.val(); branches = val ? Object.values(val) : []; renderBranches(); });
         db.ref('simCustomers').on('value', snap => { const val = snap.val(); customers = val ? Object.values(val) : []; renderCustomers(); });
 
         function initApp() {
             const letterSel = document.getElementById('catLetter');
             const numSel = document.getElementById('catNumber');
-            for (let i = 65; i <= 90; i++) letterSel.innerHTML += `<option value="${String.fromCharCode(i)}">${String.fromCharCode(i)}</option>`;
-            for (let n = 1; n <= 100; n++) numSel.innerHTML += `<option value="${n < 10 ? '0' + n : n}">${n < 10 ? '0' + n : n}</option>`;
+            const bulkLetterSel = document.getElementById('bulkCatLetter');
+            const bulkNumSel = document.getElementById('bulkCatNumber');
+
+            for (let i = 65; i <= 90; i++) {
+                const ch = String.fromCharCode(i);
+                letterSel.innerHTML += `<option value="${ch}">${ch}</option>`;
+                bulkLetterSel.innerHTML += `<option value="${ch}">${ch}</option>`;
+            }
+            for (let n = 1; n <= 100; n++) {
+                const numStr = n < 10 ? '0' + n : '' + n;
+                numSel.innerHTML += `<option value="${numStr}">${numStr}</option>`;
+                bulkNumSel.innerHTML += `<option value="${numStr}">${numStr}</option>`;
+            }
 
             letterSel.value = "";
             numSel.value = "";
@@ -328,6 +435,208 @@
 
             renderBranches();
             renderCustomers();
+
+            // فتح تاب تغيير التصنيف تلقائياً إذا تم تمرير الرابط ?tab=cat
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.get('tab') === 'cat') {
+                switchMainTab('cat');
+            }
+        }
+
+        // التبديل بين التاب الرئيسي وتاب تغيير التصنيف
+        function switchMainTab(tab) {
+            const scanSec = document.getElementById('scanTabSection');
+            const catSec = document.getElementById('catTabSection');
+            const scanBtn = document.getElementById('tabScanBtn');
+            const catBtn = document.getElementById('tabCatBtn');
+
+            if (tab === 'cat') {
+                if (isLiveRunning) toggleLiveCamera();
+                scanSec.style.display = 'none';
+                catSec.style.display = 'block';
+                scanBtn.classList.remove('active');
+                catBtn.classList.add('active');
+                updateCatFilterDropdown();
+                renderCategoryTabTable();
+            } else {
+                scanSec.style.display = 'block';
+                catSec.style.display = 'none';
+                scanBtn.classList.add('active');
+                catBtn.classList.remove('active');
+            }
+        }
+
+        // تحديث قائمة التصنيفات في فلتر تاب تغيير التصنيف
+        function updateCatFilterDropdown() {
+            const sel = document.getElementById('filterCategory');
+            const currentVal = sel.value || 'all';
+            const catCounts = {};
+
+            for (let code in sims) {
+                const c = sims[code].category || 'بدون تصنيف';
+                catCounts[c] = (catCounts[c] || 0) + 1;
+            }
+
+            sel.innerHTML = `<option value="all">الكل (جميع التصنيفات)</option>`;
+            Object.keys(catCounts).sort().forEach(cat => {
+                sel.innerHTML += `<option value="${cat}">${cat} (${catCounts[cat]})</option>`;
+            });
+
+            if (currentVal === 'all' || catCounts[currentVal]) {
+                sel.value = currentVal;
+            } else {
+                sel.value = 'all';
+            }
+        }
+
+        function onFilterChange() {
+            document.getElementById('selectAllChk').checked = false;
+            renderCategoryTabTable();
+        }
+
+        function getFilteredCodesForCatTab() {
+            const statusFilter = document.getElementById('filterStatus').value;
+            const catFilter = document.getElementById('filterCategory').value;
+            const result = [];
+
+            for (let code in sims) {
+                const item = sims[code];
+                const itemCat = item.category || 'بدون تصنيف';
+                if (statusFilter !== 'all' && item.status !== statusFilter) continue;
+                if (catFilter !== 'all' && itemCat !== catFilter) continue;
+                result.push(code);
+            }
+            return result;
+        }
+
+        function renderCategoryTabTable() {
+            const tbody = document.getElementById('catSimTable');
+            tbody.innerHTML = '';
+
+            // تنظيف أي أكواد محددة لم تعد موجودة في قاعدة البيانات
+            for (let code of selectedSimCodes) {
+                if (!sims[code]) selectedSimCodes.delete(code);
+            }
+
+            const filteredCodes = getFilteredCodesForCatTab();
+
+            if (filteredCodes.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="8" style="padding:18px; color:#64748b; font-weight:bold;">لا توجد شرائح مطابقة للفلتر المختار</td></tr>`;
+                updateBulkBarUI();
+                return;
+            }
+
+            let allVisibleSelected = true;
+
+            filteredCodes.forEach(code => {
+                const item = sims[code];
+                const isChecked = selectedSimCodes.has(code);
+                if (!isChecked) allVisibleSelected = false;
+
+                const statusClass = item.status === 'متاح' ? 'status-in' : 'status-out';
+                const branchOrCustomer = item.status === 'متاح' ? `فرع: ${item.branch || '-'}` : `عميل: ${item.customer || '-'}`;
+                const dateTime = `${item.date || '-'}${item.time ? ' ' + item.time : ''}`;
+
+                tbody.innerHTML += `
+                    <tr class="${isChecked ? 'selected-row' : ''}" id="catrow_${code}">
+                        <td class="col-chk">
+                            <input type="checkbox" class="tiny-chk" ${isChecked ? 'checked' : ''} onchange="toggleSelectSim('${code}', this)">
+                        </td>
+                        <td class="barcode-cell">${code}</td>
+                        <td><strong>${item.category || '-'}</strong></td>
+                        <td class="${statusClass}">${item.status || '-'}</td>
+                        <td>${item.short || code.slice(-9)}</td>
+                        <td>${item.company || '-'}</td>
+                        <td>${branchOrCustomer}</td>
+                        <td>${dateTime}</td>
+                    </tr>`;
+            });
+
+            document.getElementById('selectAllChk').checked = filteredCodes.length > 0 && allVisibleSelected;
+            updateBulkBarUI();
+        }
+
+        function toggleSelectSim(code, chkElem) {
+            const row = document.getElementById('catrow_' + code);
+            if (chkElem.checked) {
+                selectedSimCodes.add(code);
+                if (row) row.classList.add('selected-row');
+            } else {
+                selectedSimCodes.delete(code);
+                if (row) row.classList.remove('selected-row');
+                document.getElementById('selectAllChk').checked = false;
+            }
+            updateBulkBarUI();
+        }
+
+        function toggleSelectAll(masterChk) {
+            const filteredCodes = getFilteredCodesForCatTab();
+            filteredCodes.forEach(code => {
+                if (masterChk.checked) {
+                    selectedSimCodes.add(code);
+                } else {
+                    selectedSimCodes.delete(code);
+                }
+            });
+            renderCategoryTabTable();
+        }
+
+        function clearAllSelections() {
+            selectedSimCodes.clear();
+            document.getElementById('selectAllChk').checked = false;
+            renderCategoryTabTable();
+        }
+
+        function updateBulkBarUI() {
+            const bar = document.getElementById('bulkEditBar');
+            const countBadge = document.getElementById('selectedCountBadge');
+            const count = selectedSimCodes.size;
+
+            countBadge.innerText = count;
+            bar.style.display = count > 0 ? 'block' : 'none';
+        }
+
+        function showCatMessage(text, isError = false) {
+            const msg = document.getElementById('catMsg');
+            msg.style.display = 'block';
+            msg.style.background = isError ? '#fee2e2' : '#dcfce7';
+            msg.style.color = isError ? '#991b1b' : '#166534';
+            msg.innerText = text;
+            setTimeout(() => { msg.style.display = 'none'; }, 4000);
+        }
+
+        function applyBulkCategoryChange() {
+            if (selectedSimCodes.size === 0) return;
+
+            const letter = document.getElementById('bulkCatLetter').value;
+            const number = document.getElementById('bulkCatNumber').value;
+
+            if (!letter || !number) {
+                playBeep(false);
+                showCatMessage("⚠️ يرجى اختيار الحرف والرقم للتصنيف الجديد أولاً!", true);
+                return;
+            }
+
+            const newCategory = letter + number;
+            const count = selectedSimCodes.size;
+
+            const updates = {};
+            selectedSimCodes.forEach(code => {
+                if (sims[code]) {
+                    updates[`simInventory/${code}/category`] = newCategory;
+                }
+            });
+
+            db.ref().update(updates).then(() => {
+                playBeep(true);
+                selectedSimCodes.clear();
+                document.getElementById('selectAllChk').checked = false;
+                showCatMessage(`✅ تم تغيير تصنيف (${count}) شريحة إلى (${newCategory}) بنجاح!`);
+                renderCategoryTabTable();
+            }).catch(() => {
+                playBeep(false);
+                showCatMessage("❌ حدث خطأ أثناء تحديث التصنيف، حاول مرة أخرى.", true);
+            });
         }
 
         function onBranchChange() {
