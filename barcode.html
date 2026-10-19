@@ -39,9 +39,8 @@
         .status-out { color: #dc2626; font-weight: bold; }
         #msg { padding: 12px; border-radius: 8px; text-align: center; font-weight: bold; display: none; margin-bottom: 10px; }
         
-        /* تكبير نافذة الكاميرا بالكامل */
-        #reader { width: 100%; min-height: 320px; margin-bottom: 10px; border-radius: 8px; overflow: hidden; background: #000; }
-        #reader video { object-fit: cover; min-height: 320px; width: 100%; }
+        /* ترك أبعاد الكاميرا حرة لتعمل المكتبة بأقصى سرعة وبدون اختفاء المربع */
+        #reader { width: 100%; margin-bottom: 10px; border-radius: 8px; overflow: hidden; }
 
         .mode-switch { background: #eff6ff; padding: 10px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #bfdbfe; }
     </style>
@@ -226,6 +225,8 @@
         let isLiveRunning = false;
         let lastScanned = "";
         let lastScanTime = 0;
+
+        function saveStickyValues() {}
 
         function getTodayStr() {
             const d = new Date();
@@ -435,10 +436,17 @@
             }
 
             try {
-                // تم تكبير مساحة ومربع المسح الداخلي (qrbox) ليشغل كامل العرض تقريباً لمسح فائق السرعة
                 await html5QrCode.start(
                     { facingMode: "environment" },
-                    { fps: 30, qrbox: { width: 360, height: 260 } },
+                    {
+                        fps: 25,
+                        qrbox: function(viewfinderWidth, viewfinderHeight) {
+                            return {
+                                width: Math.floor(viewfinderWidth * 0.85),
+                                height: Math.floor(viewfinderHeight * 0.55)
+                            };
+                        }
+                    },
                     (text) => handleInScan(text)
                 );
                 isLiveRunning = true;
