@@ -39,9 +39,9 @@
         .status-out { color: #dc2626; font-weight: bold; }
         #msg { padding: 12px; border-radius: 8px; text-align: center; font-weight: bold; display: none; margin-bottom: 10px; }
         
-        /* ضبط إطار الكاميرا ليكون أوسع وأسرع في القراءة */
-        #reader { width: 100%; max-height: 230px; margin-bottom: 10px; border-radius: 8px; overflow: hidden; background: #000; }
-        #reader video { object-fit: cover; max-height: 230px; width: 100%; }
+        /* تكبير مساحة الكاميرا وجعل الرؤية واسعة جداً وسريعة */
+        #reader { width: 100%; min-height: 280px; margin-bottom: 10px; border-radius: 8px; overflow: hidden; background: #000; }
+        #reader video { object-fit: cover; min-height: 280px; width: 100%; }
 
         .mode-switch { background: #eff6ff; padding: 10px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #bfdbfe; }
     </style>
@@ -435,11 +435,10 @@
             }
 
             try {
-                // تم توسيع إطار الكاميرا ليكون مريحاً وسريعاً جداً في التقاط الباركود
-                const qrboxSize = window.innerWidth < 500 ? { width: 280, height: 110 } : { width: 350, height: 130 };
+                // إزالة تقييد الـ qrbox الضيق تماماً للسماح للكاميرا بالمسح من أي مكان بالعدسة وبسرعة فائقة
                 await html5QrCode.start(
                     { facingMode: "environment" },
-                    { fps: 20, qrbox: qrboxSize, aspectRatio: 1.777 },
+                    { fps: 25, qrbox: { width: 320, height: 220 } },
                     (text) => handleInScan(text)
                 );
                 isLiveRunning = true;
