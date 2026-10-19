@@ -39,9 +39,9 @@
         .status-out { color: #dc2626; font-weight: bold; }
         #msg { padding: 12px; border-radius: 8px; text-align: center; font-weight: bold; display: none; margin-bottom: 10px; }
         
-        /* تكبير مساحة الكاميرا وجعل الرؤية واسعة جداً وسريعة */
-        #reader { width: 100%; min-height: 280px; margin-bottom: 10px; border-radius: 8px; overflow: hidden; background: #000; }
-        #reader video { object-fit: cover; min-height: 280px; width: 100%; }
+        /* تكبير نافذة الكاميرا بالكامل */
+        #reader { width: 100%; min-height: 320px; margin-bottom: 10px; border-radius: 8px; overflow: hidden; background: #000; }
+        #reader video { object-fit: cover; min-height: 320px; width: 100%; }
 
         .mode-switch { background: #eff6ff; padding: 10px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #bfdbfe; }
     </style>
@@ -435,10 +435,10 @@
             }
 
             try {
-                // إزالة تقييد الـ qrbox الضيق تماماً للسماح للكاميرا بالمسح من أي مكان بالعدسة وبسرعة فائقة
+                // تم تكبير مساحة ومربع المسح الداخلي (qrbox) ليشغل كامل العرض تقريباً لمسح فائق السرعة
                 await html5QrCode.start(
                     { facingMode: "environment" },
-                    { fps: 25, qrbox: { width: 320, height: 220 } },
+                    { fps: 30, qrbox: { width: 360, height: 260 } },
                     (text) => handleInScan(text)
                 );
                 isLiveRunning = true;
