@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تسجيل الدخول - نظام الشرائح</title>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; background: #f0f4f8; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; padding: 15px; }
+        .login-card { background: white; padding: 28px; border-radius: 14px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); width: 100%; max-width: 380px; box-sizing: border-box; }
+        h3 { text-align: center; color: #1e3a8a; margin-top: 0; margin-bottom: 20px; font-size: 1.3rem; }
+        label { display: block; margin-top: 12px; font-weight: bold; font-size: 13px; color: #334155; }
+        input, button { padding: 12px; margin: 6px 0; width: 100%; box-sizing: border-box; font-size: 14px; border-radius: 8px; border: 1px solid #cbd5e1; }
+        .btn-login { background: #1e3a8a; color: white; border: none; font-weight: bold; cursor: pointer; margin-top: 15px; font-size: 15px; }
+        .btn-bio { background: #16a34a; color: white; border: none; font-weight: bold; cursor: pointer; margin-top: 6px; }
+        .checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 13px; }
+        .checkbox-row input { width: auto; margin: 0; cursor: pointer; }
+        #msg { padding: 10px; border-radius: 8px; text-align: center; font-weight: bold; font-size: 13px; display: none; margin-bottom: 12px; }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <h3>🔐 تسجيل الدخول للنظام</h3>
+        <div id="msg"></div>
+        <label>اسم المستخدم:</label>
+        <input type="text" id="username" placeholder="اكتب اسم المستخدم...">
+        <label>كلمة المرور:</label>
+        <input type="password" id="password" placeholder="اكتب كلمة المرور...">
+        <div class="checkbox-row">
+            <input type="checkbox" id="rememberMe">
+            <label for="rememberMe" style="margin:0; display:inline; cursor:pointer;">تذكرني</label>
+        </div>
+        <button class="btn-login" onclick="login()">تسجيل الدخول</button>
+        <button class="btn-bio" onclick="loginWithBiometric()">🪪 الدخول بالبصمة</button>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyCJR3KfdC2Xhi_Dkbf4mgWEwTw4_1SMOIw",
+            authDomain: "barcode-d7a1a.firebaseapp.com",
+            databaseURL: "https://barcode-d7a1a-default-rtdb.firebaseio.com",
+            projectId: "barcode-d7a1a",
+            storageBucket: "barcode-d7a1a.firebasestorage.app",
+            messagingSenderId: "318703218985",
+            appId: "1:318703218985:web:80a89d69550be099a14738"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        db.ref('users/admin').once('value').then(snap => {
+            if(!snap.exists()) {
+                db.ref('users/admin').set({ password: "123", role: "admin" });
+            }
+        });
+
+        window.onload = function() {
+            const savedUser = localStorage.getItem('sim_saved_user');
+            const savedPass = localStorage.getItem('sim_saved_pass');
+            if(savedUser) {
+                document.getElementById('username').value = savedUser;
+                if(savedPass) document.getElementById('password').value = savedPass;
+                document.getElementById('rememberMe').checked = true;
+            }
+        }
+
+        function showMsg(txt, isErr = true) {
+            const m = document.getElementById('msg');
+            m.style.display = 'block';
+            m.style.background = isErr ? '#fee2e2' : '#dcfce7';
+            m.style.color = isErr ? '#991b1b' : '#166534';
+            m.innerText = txt;
+        }
+
+        function login() {
+            const rawUser = document.getElementById('username').value.trim();
+            const p = document.getElementById('password').value.trim();
+            if(!rawUser || !p) { showMsg("يرجى إدخال اسم المستخدم وكلمة المرور"); return; }
+            const u = rawUser.toLowerCase();
+
+            db.ref('users/' + u).once('value').then(snap => {
+                const data = snap.val();
+                if(!data || String(data.password) !== String(p)) {
+                    showMsg("اسم المستخدم أو كلمة المرور غير صحيحة!");
+                    return;
+                }
+                if(document.getElementById('rememberMe').checked) {
+                    localStorage.setItem('sim_saved_user', rawUser);
+                    localStorage.setItem('sim_saved_pass', p);
+                } else {
+                    localStorage.removeItem('sim_saved_user');
+                    localStorage.removeItem('sim_saved_pass');
+                }
+                const userObj = { username: u, role: data.role };
+                localStorage.setItem('logged_user', JSON.stringify(userObj));
+                localStorage.setItem('sim_bio_user', JSON.stringify(userObj));
+                window.location.href = "index.html";
+            });
+        }
+
+        async function loginWithBiometric() {
+            const bioUser = localStorage.getItem('sim_bio_user');
+            if (!bioUser) {
+                showMsg("يرجى تسجيل الدخول بكلمة المرور أول مرة لتفعيل البصمة.");
+                return;
+            }
+            try {
+                const publicKey = {
+                    challenge: new Uint8Array([21,31,105,10,24,36,58,99]),
+                    rp: { name: "SIM System" },
+                    user: { id: new Uint8Array([1, 2, 3, 4]), name: "user@sim.com", displayName: "SIM User" },
+                    pubKeyCredParams: [{ alg: -7, type: "public-key" }],
+                    authenticatorSelection: { userVerification: "required" },
+                    timeout: 60000
+                };
+                await navigator.credentials.create({ publicKey });
+                localStorage.setItem('logged_user', bioUser);
+                window.location.href = "index.html";
+            } catch(e) {
+                showMsg("فشل التحقق من البصمة.");
+            }
+        }
+        document.getElementById('password').addEventListener('keypress', function(e) { if(e.key === 'Enter') login(); });
+    </script>
+</body>
+</html>

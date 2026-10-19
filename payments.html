@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>استلام الدفعات النقدية</title>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; max-width: 800px; margin: 0 auto; padding: 15px; background: #f8fafc; color: #1e293b; }
+        .card { background: white; padding: 18px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 15px; border: 1px solid #e2e8f0; }
+        label { display: block; margin-top: 10px; font-weight: bold; font-size: 13px; color: #334155; }
+        input, select, button { padding: 10px; margin: 5px 0; width: 100%; box-sizing: border-box; font-size: 14px; border-radius: 8px; border: 1px solid #cbd5e1; }
+        .row-flex { display: flex; gap: 10px; align-items: center; }
+        .row-flex > * { flex: 1; }
+        
+        .customer-select-box { max-width: 250px; background: #f8fafc; font-weight: bold; color: #1e3a8a; }
+        
+        /* شريط حالة الحساب (أحمر للمديونية أو أخضر للرصيد) */
+        .status-badge { padding: 8px 12px; border-radius: 8px; font-weight: bold; font-size: 14px; margin-top: 8px; display: inline-block; }
+        .debt-style { background: #fee2e2; color: #991b1b; border: 1px solid #f87171; }
+        .credit-style { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+
+        .btn-save { background: #16a34a; color: white; border: none; font-weight: bold; font-size: 15px; cursor: pointer; margin-top: 12px; padding: 13px; }
+        .stats-banner { background: #dcfce7; color: #166534; padding: 12px; border-radius: 8px; text-align: center; font-weight: bold; font-size: 15px; margin-bottom: 12px; border: 1px solid #86efac; }
+        .table-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+        th, td { border: 1px solid #e2e8f0; padding: 9px; text-align: center; white-space: nowrap; }
+        th { background: #1e293b; color: white; }
+        .btn-del { background: #dc2626; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; width: auto; font-size: 12px; }
+    </style>
+</head>
+<body>
+
+    <h3 style="text-align:center; margin-top:0; color:#1e3a8a;">💵 استلام الدفعات النقدية</h3>
+
+    <div class="stats-banner">
+        إجمالي الدفعات النقدية المستلمة: <span id="totalCash">0.00</span> ريال
+    </div>
+
+    <div class="card">
+        <label>اختر العميل:</label>
+        <select id="cashCustomer" class="customer-select-box" onchange="updateCustomerDebt()"></select>
+        <div id="customerDebtDisplay" class="status-badge debt-style">المديونية المتبقية: 0.00 ريال</div>
+
+        <label>المبلغ المستلم:</label>
+        <input type="number" id="cashAmount" min="0" step="0.01" placeholder="أدخل المبلغ المستلم...">
+
+        <div class="row-flex">
+            <div>
+                <label>التاريخ:</label>
+                <input type="date" id="cashDate" style="padding:8px;">
+            </div>
+            <div>
+                <label>الوقت:</label>
+                <input type="time" id="cashTime" style="padding:8px;">
+            </div>
+        </div>
+
+        <label>البيان / ملاحظات:</label>
+        <input type="text" id="cashNotes" placeholder="اكتب ملاحظات الدفعة...">
+
+        <button class="btn-save" onclick="savePayment()">💾 حفظ وتسجيل الدفعة النقدية</button>
+    </div>
+
+    <div class="card">
+        <input type="text" id="searchPayment" placeholder="🔍 البحث باسم العميل أو الملاحظات..." oninput="renderPayments()">
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>حذف</th>
+                        <th>اسم العميل</th>
+                        <th>المبلغ</th>
+                        <th>البيان / الملاحظات</th>
+                        <th>التاريخ والوقت</th>
+                        <th>المستلم</th>
+                    </tr>
+                </thead>
+                <tbody id="paymentsTable"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyCJR3KfdC2Xhi_Dkbf4mgWEwTw4_1SMOIw",
+            authDomain: "barcode-d7a1a.firebaseapp.com",
+            databaseURL: "https://barcode-d7a1a-default-rtdb.firebaseio.com",
+            projectId: "barcode-d7a1a",
+            storageBucket: "barcode-d7a1a.firebasestorage.app",
+            messagingSenderId: "318703218985",
+            appId: "1:318703218985:web:80a89d69550be099a14738"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        const currentUser = JSON.parse(localStorage.getItem('logged_user'));
+        if(!currentUser || currentUser.role !== 'admin') {
+            document.body.innerHTML = "<h3 style='text-align:center; color:red; margin-top:50px;'>⛔ عذراً، هذه الصفحة مخصصة للمدير فقط.</h3>";
+        }
+
+        let customers = [];
+        let sims = {};
+        let payments = {};
+
+        function getTodayStr() {
+            const d = new Date();
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        }
+        function getTimeStr() {
+            const d = new Date();
+            return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        }
+
+        document.getElementById('cashDate').value = getTodayStr();
+        document.getElementById('cashTime').value = getTimeStr();
+
+        db.ref('simCustomers').on('value', snap => {
+            const val = snap.val();
+            customers = val ? Object.values(val) : [];
+            const sel = document.getElementById('cashCustomer');
+            sel.innerHTML = '';
+            if(customers.length === 0) {
+                sel.innerHTML = `<option value="">-- لا توجد عملاء مضافين في المخزن --</option>`;
+            } else {
+                customers.forEach(c => sel.innerHTML += `<option value="${c}">${c}</option>`);
+            }
+            updateCustomerDebt();
+        });
+
+        db.ref('simInventory').on('value', snap => { sims = snap.val() || {}; updateCustomerDebt(); });
+        db.ref('cashPayments').on('value', snap => { payments = snap.val() || {}; renderPayments(); updateCustomerDebt(); });
+
+        // حساب مديونية العميل أو رصيده الأخضر بناءً على طلبك
+        function updateCustomerDebt() {
+            const cust = document.getElementById('cashCustomer').value;
+            const badge = document.getElementById('customerDebtDisplay');
+            if(!cust) {
+                badge.className = "status-badge debt-style";
+                badge.innerText = `المديونية المتبقية: 0.00 ريال`;
+                return;
+            }
+
+            let totalSimsPrice = 0;
+            for(let code in sims) {
+                const s = sims[code];
+                if(s.status === 'منصرف' && s.customer === cust) {
+                    totalSimsPrice += parseFloat(s.price || 0);
+                }
+            }
+
+            let totalPaid = 0;
+            for(let id in payments) {
+                const p = payments[id];
+                if(p.customer === cust) {
+                    totalPaid += parseFloat(p.amount || 0);
+                }
+            }
+
+            const net = totalSimsPrice - totalPaid;
+
+            if (net > 0) {
+                badge.className = "status-badge debt-style";
+                badge.innerText = `المديونية المتبقية على العميل: ${net.toFixed(2)} ريال`;
+            } else if (net < 0) {
+                badge.className = "status-badge credit-style";
+                badge.innerText = `رصيد للعميل بقيمة: ${Math.abs(net).toFixed(2)} ريال`;
+            } else {
+                badge.className = "status-badge credit-style";
+                badge.innerText = `الحساب مسدد بالكامل (لا توجد مديونية)`;
+            }
+        }
+
+        function savePayment() {
+            const customer = document.getElementById('cashCustomer').value;
+            const amount = parseFloat(document.getElementById('cashAmount').value);
+            const date = document.getElementById('cashDate').value || getTodayStr();
+            const time = document.getElementById('cashTime').value || getTimeStr();
+            const notes = document.getElementById('cashNotes').value.trim() || '-';
+
+            if(!customer) { alert("يرجى اختيار العميل!"); return; }
+            if(!amount || amount <= 0) { alert("يرجى إدخال مبلغ صحيح!"); return; }
+
+            db.ref('cashPayments').push({
+                customer, amount, notes, date, time, user: currentUser.username
+            }).then(() => {
+                alert("✅ تم حفظ الدفعة وتخفيض مديونية العميل بنجاح!");
+                document.getElementById('cashAmount').value = '';
+                document.getElementById('cashNotes').value = '';
+                document.getElementById('cashTime').value = getTimeStr();
+            });
+        }
+
+        function deletePayment(id) {
+            if(confirm("هل أنت متأكد من حذف هذه الدفعة النقدية؟")) {
+                db.ref('cashPayments/' + id).remove();
+            }
+        }
+
+        function renderPayments() {
+            const tbody = document.getElementById('paymentsTable');
+            const search = document.getElementById('searchPayment').value.trim().toLowerCase();
+            tbody.innerHTML = '';
+            let sum = 0;
+
+            const keys = Object.keys(payments).reverse();
+            keys.forEach(id => {
+                const p = payments[id];
+                const amt = parseFloat(p.amount) || 0;
+                sum += amt;
+
+                if(search && !(p.customer && p.customer.toLowerCase().includes(search)) && !(p.notes && p.notes.toLowerCase().includes(search))) return;
+
+                tbody.innerHTML += `
+                    <tr>
+                        <td><button class="btn-del" onclick="deletePayment('${id}')">🗑️</button></td>
+                        <td><strong>${p.customer || '-'}</strong></td>
+                        <td style="color:#16a34a; font-weight:bold;">${amt.toFixed(2)}</td>
+                        <td>${p.notes || '-'}</td>
+                        <td>${p.date || '-'} (${p.time || ''})</td>
+                        <td>${p.user || '-'}</td>
+                    </tr>`;
+            });
+            document.getElementById('totalCash').innerText = sum.toFixed(2);
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>إدارة الموظفين</title>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; max-width: 650px; margin: 0 auto; padding: 15px; background: #f8fafc; color: #1e293b; }
+        .card { background: white; padding: 18px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 15px; border: 1px solid #e2e8f0; }
+        label { display: block; margin-top: 10px; font-weight: bold; font-size: 13px; color: #334155; }
+        input, select, button { padding: 11px; margin: 5px 0; width: 100%; box-sizing: border-box; font-size: 14px; border-radius: 8px; border: 1px solid #cbd5e1; }
+        .btn-save { background: #1e3a8a; color: white; border: none; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+        th, td { border: 1px solid #e2e8f0; padding: 9px; text-align: center; }
+        th { background: #1e293b; color: white; }
+        .btn-del { background: #dc2626; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; width: auto; }
+        .btn-edit { background: #f59e0b; color: white; border: none; padding: 5px 10px; border-radius: 5px; cursor: pointer; width: auto; }
+    </style>
+</head>
+<body>
+
+    <h3 style="text-align:center; margin-top:0; color:#1e3a8a;">👥 إدارة الموظفين والصلاحيات</h3>
+
+    <div class="card">
+        <h4 style="margin-top:0;">إضافة / تعديل موظف</h4>
+        <label>اسم المستخدم:</label>
+        <input type="text" id="empUser" placeholder="أدخل اسم المستخدم...">
+        <label>كلمة المرور:</label>
+        <input type="text" id="empPass" placeholder="أدخل كلمة المرور...">
+        <label>الصلاحية:</label>
+        <select id="empRole">
+            <option value="employee">موظف (إضافة شرائح فقط)</option>
+            <option value="admin">مدير (صلاحيات كاملة + دفعات)</option>
+        </select>
+        <button class="btn-save" onclick="saveEmployee()">💾 حفظ بيانات الموظف</button>
+    </div>
+
+    <div class="card">
+        <h4 style="margin-top:0;">قائمة الموظفين المسجلين</h4>
+        <table>
+            <thead>
+                <tr>
+                    <th>اسم المستخدم</th>
+                    <th>كلمة المرور</th>
+                    <th>الصلاحية</th>
+                    <th>تحكم</th>
+                </tr>
+            </thead>
+            <tbody id="empTable"></tbody>
+        </table>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyCJR3KfdC2Xhi_Dkbf4mgWEwTw4_1SMOIw",
+            authDomain: "barcode-d7a1a.firebaseapp.com",
+            databaseURL: "https://barcode-d7a1a-default-rtdb.firebaseio.com",
+            projectId: "barcode-d7a1a",
+            storageBucket: "barcode-d7a1a.firebasestorage.app",
+            messagingSenderId: "318703218985",
+            appId: "1:318703218985:web:80a89d69550be099a14738"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        const currentUser = JSON.parse(localStorage.getItem('logged_user'));
+        if(!currentUser || currentUser.role !== 'admin') {
+            document.body.innerHTML = "<h3 style='text-align:center; color:red; margin-top:50px;'>⛔ عذراً، هذه الصفحة مخصصة للمدير فقط.</h3>";
+        }
+
+        db.ref('users').on('value', snap => {
+            const data = snap.val() || {};
+            const tbody = document.getElementById('empTable');
+            tbody.innerHTML = '';
+            for(let u in data) {
+                tbody.innerHTML += `
+                    <tr>
+                        <td><strong>${u}</strong></td>
+                        <td>${data[u].password}</td>
+                        <td>${data[u].role === 'admin' ? '👑 مدير' : '👤 موظف'}</td>
+                        <td>
+                            <button class="btn-edit" onclick="editEmp('${u}', '${data[u].password}', '${data[u].role}')">✏️</button>
+                            <button class="btn-del" onclick="deleteEmp('${u}')">🗑️</button>
+                        </td>
+                    </tr>`;
+            }
+        });
+
+        function saveEmployee() {
+            const rawU = document.getElementById('empUser').value.trim();
+            const p = document.getElementById('empPass').value.trim();
+            const r = document.getElementById('empRole').value;
+            if(!rawU || !p) { alert("يرجى إكمال البيانات"); return; }
+            const u = rawU.toLowerCase();
+
+            db.ref('users/' + u).set({ password: p, role: r }).then(() => {
+                alert("✅ تم حفظ بيانات الموظف بنجاح");
+                document.getElementById('empUser').value = '';
+                document.getElementById('empPass').value = '';
+                document.getElementById('empUser').disabled = false;
+            });
+        }
+
+        function editEmp(u, p, r) {
+            document.getElementById('empUser').value = u;
+            document.getElementById('empUser').disabled = true;
+            document.getElementById('empPass').value = p;
+            document.getElementById('empRole').value = r;
+        }
+
+        function deleteEmp(u) {
+            if(u === 'admin') { alert("لا يمكن حذف حساب المدير الأساسي (admin)!"); return; }
+            if(confirm(`هل أنت متأكد من حذف الموظف (${u})؟`)) {
+                db.ref('users/' + u).remove();
+            }
+        }
+    </script>
+</body>
+</html>

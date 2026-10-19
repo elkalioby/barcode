@@ -1,0 +1,617 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>نظام تسجيل الشرائح</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, sans-serif; max-width: 850px; margin: 0 auto; padding: 12px; background: #f8fafc; color: #1e293b; }
+        .card { background: white; padding: 16px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.05); margin-bottom: 15px; border: 1px solid #e2e8f0; }
+        label { display: block; margin-top: 10px; font-weight: bold; font-size: 13px; color: #333; }
+        input, select, button { padding: 10px; margin: 5px 0; width: 100%; box-sizing: border-box; font-size: 14px; border-radius: 8px; border: 1px solid #cbd5e1; background: #fff; color: #0f172a; }
+        select { font-weight: bold; }
+        .row-flex { display: flex; gap: 10px; align-items: center; }
+        .row-flex > * { flex: 1; }
+        
+        .branch-row { display: flex; gap: 6px; align-items: center; width: 100%; }
+        .branch-row select { flex: 1; min-width: 140px; background-color: #f8fafc; color: #1e3a8a; font-size: 14px; font-weight: bold; border: 2px solid #93c5fd; }
+        
+        .btn-icon { flex: 0 0 32px; width: 32px; height: 38px; padding: 0; display: flex; align-items: center; justify-content: center; border: none; border-radius: 6px; cursor: pointer; font-size: 13px; color: white; }
+        .btn-add-branch { background: #16a34a; }
+        .btn-del-branch { background: #dc2626; }
+        
+        .selected-badge { display: inline-block; background: #dbeafe; color: #1e3a8a; padding: 2px 10px; border-radius: 12px; font-size: 12px; margin-right: 6px; font-weight: bold; }
+        .btn-live { background: #2563eb; color: white; border: none; font-weight: bold; font-size: 15px; padding: 13px; cursor: pointer; margin-bottom: 10px; }
+        .btn-manual { background: #1e293b; color: white; border: none; font-weight: bold; cursor: pointer; margin-top: 8px; padding: 12px; }
+        .btn-out-submit { background: #dc2626; color: white; border: none; font-weight: bold; font-size: 15px; padding: 13px; cursor: pointer; margin-top: 10px; }
+        .btn-export { background: #16a34a; color: white; border: none; font-weight: bold; margin-top: 12px; cursor: pointer; }
+        .btn-del-row { background: #dc2626; color: white; border: none; padding: 4px 9px; border-radius: 5px; cursor: pointer; font-size: 12px; width: auto; }
+        
+        .stats { display: flex; justify-content: space-between; background: #f1f5f9; padding: 12px; border-radius: 8px; font-weight: bold; font-size: 13px; }
+        .table-wrap { overflow-x: auto; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+        th, td { border: 1px solid #e2e8f0; padding: 8px; text-align: center; white-space: nowrap; }
+        th { background: #1e293b; color: white; }
+        .status-in { color: #16a34a; font-weight: bold; }
+        .status-out { color: #dc2626; font-weight: bold; }
+        #msg { padding: 12px; border-radius: 8px; text-align: center; font-weight: bold; display: none; margin-bottom: 10px; }
+        
+        #reader { width: 100%; max-height: 200px; margin-bottom: 10px; border-radius: 8px; overflow: hidden; background: #000; }
+        #reader video { object-fit: cover; max-height: 200px; width: 100%; }
+
+        .mode-switch { background: #eff6ff; padding: 10px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #bfdbfe; }
+    </style>
+</head>
+<body>
+
+    <h3 style="text-align:center; margin-top:0; color:#1e3a8a;">📱 نظام تسجيل الشرائح</h3>
+
+    <div class="card" style="padding: 10px; margin-bottom: 12px;">
+        <div class="stats">
+            <span>الإجمالي: <span id="totalCount">0</span></span>
+            <span class="status-in">متاح بالمخزن: <span id="inCount">0</span></span>
+            <span class="status-out">منصرف: <span id="outCount">0</span></span>
+        </div>
+    </div>
+
+    <div class="card">
+        <div id="msg"></div>
+
+        <div class="mode-switch" id="modeSwitchBox">
+            <label style="margin-top:0;">نوع الحركة:</label>
+            <select id="actionType" onchange="switchMode()">
+                <option value="in">📥 إضافة للمخزن (وارد جديد)</option>
+                <option value="out" id="outOpt">📤 صرف من المخزن</option>
+            </select>
+        </div>
+
+        <!-- ================= قسم الوارد ================= -->
+        <div id="inSection">
+            <button id="liveBtn" class="btn-live" onclick="toggleLiveCamera()">
+                🎥 تشغيل الكاميرا الخلفية (مسح الباركود)
+            </button>
+            <div id="reader"></div>
+
+            <div class="row-flex">
+                <div>
+                    <label>الشركة:</label>
+                    <select id="companyName" onchange="saveStickyValues()">
+                        <option value="تلقائي">✨ تلقائي من الباركود</option>
+                        <option value="موبايلي">موبايلي (Mobily)</option>
+                        <option value="STC سوا">إس تي سي (STC)</option>
+                        <option value="زين">زين (Zain)</option>
+                        <option value="سلام">سلام (Salam)</option>
+                        <option value="فيرجن">فيرجن (Virgin)</option>
+                        <option value="ليبارا">ليبارا (Lebara)</option>
+                        <option value="ريد بُل">ريد بُل (Red Bull)</option>
+                    </select>
+                </div>
+                <div>
+                    <label>تاريخ الوارد:</label>
+                    <input type="date" id="inDate" onchange="saveStickyValues()">
+                </div>
+            </div>
+
+            <label>وقت الوارد (تلقائي):</label>
+            <input type="text" id="inTimeDisplay" readonly style="background:#e2e8f0; font-weight:bold; color:#1e3a8a;">
+
+            <!-- خانات التصنيف تبدأ فارغة تماماً -->
+            <label>التصنيف (من A01 إلى Z100):</label>
+            <div class="row-flex">
+                <select id="catLetter" onchange="saveStickyValues()">
+                    <option value="">-- اختر الحرف --</option>
+                </select>
+                <select id="catNumber" onchange="saveStickyValues()">
+                    <option value="">-- اختر الرقم --</option>
+                </select>
+            </div>
+
+            <label>رقم الهوية:</label>
+            <input type="text" id="idNumber" placeholder="اكتب رقم الهوية..." oninput="saveStickyValues()">
+
+            <!-- خانة الفرع تبدأ فارغة واختيارها إجباري -->
+            <label>الفرع: <span id="activeBranchLabel" class="selected-badge">لم يتم الاختيار</span></label>
+            <div class="branch-row">
+                <select id="branchSelect" onchange="onBranchChange()">
+                    <option value="">-- اختر الفرع أولاً --</option>
+                </select>
+                <button type="button" class="btn-icon btn-add-branch" onclick="addNewBranch()" title="إضافة فرع جديد">➕</button>
+                <button type="button" class="btn-icon btn-del-branch" onclick="deleteBranch()" title="حذف الفرع المختار">❌</button>
+            </div>
+
+            <label>الباركود:</label>
+            <input type="number" id="barcodeInput" placeholder="امسح الباركود أو اكتبه هنا">
+            <button class="btn-manual" onclick="handleInScan()">تسجيل الشريحة بالمخزن</button>
+        </div>
+
+        <!-- ================= قسم الصرف ================= -->
+        <div id="outSection" style="display:none;">
+            <label>اسم العميل:</label>
+            <div class="branch-row" style="margin-bottom: 8px;">
+                <select id="customerSelect" onchange="onCustomerChange()"></select>
+                <button type="button" class="btn-icon btn-add-branch" onclick="addNewCustomer()" title="إضافة عميل جديد">➕</button>
+                <button type="button" class="btn-icon btn-del-branch" onclick="deleteCustomer()" title="حذف العميل المختار">❌</button>
+            </div>
+
+            <div class="row-flex">
+                <div style="flex: 2;">
+                    <label>التصنيف:</label>
+                    <select id="outCategorySelect" style="font-size: 15px; padding: 11px;"></select>
+                </div>
+                <div style="flex: 0.8;">
+                    <label>العدد:</label>
+                    <input type="number" id="outQty" min="1" value="1" placeholder="الكمية" oninput="calculateTotal()" style="padding: 11px;">
+                </div>
+            </div>
+
+            <div class="row-flex">
+                <div>
+                    <label>سعر الشريحة:</label>
+                    <input type="number" id="outPrice" value="0" min="0" placeholder="السعر..." oninput="calculateTotal()">
+                </div>
+                <div>
+                    <label>الإجمالي التلقائي:</label>
+                    <input type="text" id="outTotal" readonly style="background:#e2e8f0; font-weight:bold; color:#1e3a8a;" value="0.00">
+                </div>
+            </div>
+
+            <div class="row-flex">
+                <div>
+                    <label>التاريخ:</label>
+                    <input type="date" id="outDate" style="padding:7px;">
+                </div>
+                <div>
+                    <label>الوقت:</label>
+                    <input type="time" id="outTime" style="padding:7px;">
+                </div>
+            </div>
+
+            <button class="btn-out-submit" onclick="handleOutDispense()">📤 تأكيد صرف العدد للعميل</button>
+        </div>
+    </div>
+
+    <div class="card">
+        <input type="text" id="searchInput" placeholder="🔍 البحث بالباركود أو التصنيف أو الفرع أو اليوزر" oninput="renderTable()">
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th id="thDel">حذف</th>
+                        <th>الرقم المختصر</th>
+                        <th>التصنيف</th>
+                        <th>الشركة</th>
+                        <th>رقم الهوية</th>
+                        <th>الفرع / العميل</th>
+                        <th>الحالة</th>
+                        <th>التاريخ والوقت</th>
+                        <th>المستخدم (اليوزر)</th>
+                        <th>الباركود الكامل</th>
+                    </tr>
+                </thead>
+                <tbody id="simTable"></tbody>
+            </table>
+        </div>
+        <button class="btn-export" onclick="exportCSV()">📊 تحميل الكشف الكامل في ملف Excel</button>
+    </div>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyCJR3KfdC2Xhi_Dkbf4mgWEwTw4_1SMOIw",
+            authDomain: "barcode-d7a1a.firebaseapp.com",
+            databaseURL: "https://barcode-d7a1a-default-rtdb.firebaseio.com",
+            projectId: "barcode-d7a1a",
+            storageBucket: "barcode-d7a1a.firebasestorage.app",
+            messagingSenderId: "318703218985",
+            appId: "1:318703218985:web:80a89d69550be099a14738"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        let currentUser = JSON.parse(localStorage.getItem('logged_user'));
+        if(!currentUser) { window.top.location.href = "login.html"; }
+
+        if(currentUser && currentUser.role !== 'admin') {
+            document.getElementById('modeSwitchBox').style.display = 'none';
+            document.getElementById('outSection').style.display = 'none';
+            document.getElementById('thDel').style.display = 'none';
+        }
+
+        let sims = {};
+        let branches = [];
+        let customers = [];
+
+        const html5QrCode = new Html5Qrcode("reader");
+        let isLiveRunning = false;
+        let lastScanned = "";
+        let lastScanTime = 0;
+
+        function getTodayStr() {
+            const d = new Date();
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        }
+        function getTimeStr() {
+            const d = new Date();
+            return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        }
+
+        document.getElementById('inTimeDisplay').value = getTimeStr();
+
+        db.ref('simInventory').on('value', snap => { sims = snap.val() || {}; renderTable(); updateOutCategories(); });
+        db.ref('simBranches').on('value', snap => { const val = snap.val(); branches = val ? Object.values(val) : []; renderBranches(); });
+        db.ref('simCustomers').on('value', snap => { const val = snap.val(); customers = val ? Object.values(val) : []; renderCustomers(); });
+
+        function initApp() {
+            const letterSel = document.getElementById('catLetter');
+            const numSel = document.getElementById('catNumber');
+            for (let i = 65; i <= 90; i++) letterSel.innerHTML += `<option value="${String.fromCharCode(i)}">${String.fromCharCode(i)}</option>`;
+            for (let n = 1; n <= 100; n++) numSel.innerHTML += `<option value="${n < 10 ? '0' + n : n}">${n < 10 ? '0' + n : n}</option>`;
+
+            // جعلهما يبدآن فارغين تماماً
+            letterSel.value = "";
+            numSel.value = "";
+
+            document.getElementById('inDate').value = getTodayStr();
+            document.getElementById('outDate').value = getTodayStr();
+            document.getElementById('outTime').value = getTimeStr();
+
+            renderBranches();
+            renderCustomers();
+        }
+
+        function onBranchChange() {
+            const sel = document.getElementById('branchSelect');
+            document.getElementById('activeBranchLabel').innerText = sel.value ? sel.value : 'لم يتم الاختيار';
+        }
+        function onCustomerChange() {}
+
+        function renderBranches(target = null) {
+            const sel = document.getElementById('branchSelect');
+            const badge = document.getElementById('activeBranchLabel');
+            sel.innerHTML = `<option value="">-- اختر الفرع أولاً --</option>`;
+            
+            if(branches.length > 0) {
+                branches.forEach(b => {
+                    const opt = document.createElement('option');
+                    opt.value = b; opt.textContent = b;
+                    sel.appendChild(opt);
+                });
+                if(target && branches.includes(target)) {
+                    sel.value = target;
+                } else {
+                    sel.value = ""; // يبدأ فارغاً إجبارياً
+                }
+            }
+            badge.innerText = sel.value ? sel.value : 'لم يتم الاختيار';
+        }
+
+        function addNewBranch() {
+            const name = prompt("اكتب اسم الفرع الجديد:");
+            if (!name || !name.trim()) return;
+            const clean = name.trim();
+            if (!branches.includes(clean)) { branches.push(clean); db.ref('simBranches').set(branches); }
+            renderBranches(clean);
+        }
+
+        function deleteBranch() {
+            const sel = document.getElementById('branchSelect');
+            const val = sel.value;
+            if(!val) { alert("يرجى اختيار الفرع المراد حذفه أولاً!"); return; }
+            if(confirm(`هل أنت متأكد من حذف الفرع (${val})؟`)) {
+                branches = branches.filter(b => b !== val);
+                db.ref('simBranches').set(branches);
+                renderBranches();
+            }
+        }
+
+        function renderCustomers(target = null) {
+            const sel = document.getElementById('customerSelect');
+            const chosen = target || sel.value;
+            sel.innerHTML = '';
+            if(customers.length === 0) {
+                sel.innerHTML = `<option value="">-- اضغط ➕ لإضافة عميل --</option>`;
+            } else {
+                customers.forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c; opt.textContent = c;
+                    sel.appendChild(opt);
+                });
+                if(chosen && customers.includes(chosen)) sel.value = chosen;
+                else sel.selectedIndex = 0;
+            }
+        }
+
+        function addNewCustomer() {
+            const name = prompt("اكتب اسم العميل الجديد:");
+            if (!name || !name.trim()) return;
+            const clean = name.trim();
+            if (!customers.includes(clean)) { customers.push(clean); db.ref('simCustomers').set(customers); }
+            renderCustomers(clean);
+        }
+
+        function deleteCustomer() {
+            const sel = document.getElementById('customerSelect');
+            const val = sel.value;
+            if(!val) return;
+            if(confirm(`هل أنت متأكد من حذف العميل (${val})؟`)) {
+                customers = customers.filter(c => c !== val);
+                db.ref('simCustomers').set(customers);
+                renderCustomers();
+            }
+        }
+
+        function switchMode() {
+            if(currentUser.role !== 'admin') return;
+            const mode = document.getElementById('actionType').value;
+            document.getElementById('inSection').style.display = mode === 'in' ? 'block' : 'none';
+            document.getElementById('outSection').style.display = mode === 'out' ? 'block' : 'none';
+            if(mode !== 'in' && isLiveRunning) toggleLiveCamera();
+            if(mode === 'out') {
+                document.getElementById('outDate').value = getTodayStr();
+                document.getElementById('outTime').value = getTimeStr();
+                updateOutCategories();
+            }
+        }
+
+        function calculateTotal() {
+            const qty = parseFloat(document.getElementById('outQty').value) || 0;
+            const price = parseFloat(document.getElementById('outPrice').value) || 0;
+            document.getElementById('outTotal').value = (qty * price).toFixed(2);
+        }
+
+        function updateOutCategories() {
+            const sel = document.getElementById('outCategorySelect');
+            const counts = {};
+            for (let code in sims) {
+                if (sims[code].status === 'متاح') {
+                    const cat = sims[code].category || 'بدون تصنيف';
+                    counts[cat] = (counts[cat] || 0) + 1;
+                }
+            }
+            sel.innerHTML = '';
+            const keys = Object.keys(counts).sort();
+            if (keys.length === 0) { sel.innerHTML = `<option value="">لا توجد تصنيفات متاحة بالمخزن</option>`; return; }
+            keys.forEach(cat => sel.innerHTML += `<option value="${cat}">${cat} (${counts[cat]})</option>`);
+        }
+
+        function playBeep(success = true) {
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                osc.type = success ? "sine" : "sawtooth";
+                osc.frequency.value = success ? 880 : 220;
+                osc.connect(ctx.destination);
+                osc.start();
+                setTimeout(() => osc.stop(), success ? 120 : 350);
+            } catch(e) {}
+        }
+
+        function showMessage(text, isError = false) {
+            const msg = document.getElementById('msg');
+            msg.style.display = 'block';
+            msg.style.background = isError ? '#fee2e2' : '#dcfce7';
+            msg.style.color = isError ? '#991b1b' : '#166534';
+            msg.innerText = text;
+        }
+
+        function detectCompany(code) {
+            const selected = document.getElementById('companyName').value;
+            if (selected !== 'تلقائي') return selected;
+            if (code.startsWith('8996601')) return 'STC سوا';
+            if (code.startsWith('8996603')) return 'موبايلي';
+            if (code.startsWith('8996604')) return 'زين';
+            return 'شريحة اتصالات';
+        }
+
+        // التحقق الإجباري للفرع والتصنيف والهوية قبل تشغيل الكاميرا
+        async function toggleLiveCamera() {
+            const btn = document.getElementById('liveBtn');
+            if (isLiveRunning) {
+                await html5QrCode.stop();
+                isLiveRunning = false;
+                btn.innerText = "🎥 تشغيل الكاميرا الخلفية (مسح الباركود)";
+                btn.style.background = "#2563eb";
+                return;
+            }
+
+            const catLetter = document.getElementById('catLetter').value;
+            const catNumber = document.getElementById('catNumber').value;
+            const idNum = document.getElementById('idNumber').value.trim();
+            const branch = document.getElementById('branchSelect').value;
+
+            if (!catLetter || !catNumber) {
+                playBeep(false);
+                showMessage("⚠️ يرجى اختيار التصنيف (الحرف ورقم المجموعة) أولاً!", true);
+                return;
+            }
+            if (!idNum) {
+                playBeep(false);
+                showMessage("⚠️ يرجى كتابة رقم الهوية أولاً!", true);
+                return;
+            }
+            if (!branch) {
+                playBeep(false);
+                showMessage("⚠️ يرجى اختيار اسم الفرع أولاً قبل تشغيل الكاميرا!", true);
+                return;
+            }
+
+            try {
+                const qrboxSize = window.innerWidth < 500 ? { width: 250, height: 75 } : { width: 300, height: 85 };
+                await html5QrCode.start(
+                    { facingMode: "environment" },
+                    { fps: 20, qrbox: qrboxSize, aspectRatio: 1.777 },
+                    (text) => handleInScan(text)
+                );
+                isLiveRunning = true;
+                btn.innerText = "⏹️ إيقاف الكاميرا";
+                btn.style.background = "#dc2626";
+            } catch (err) {
+                showMessage("⚠️ تعذر تشغيل الكاميرا، تأكد من إعطاء الصلاحية.", true);
+            }
+        }
+
+        function handleInScan(scannedCode) {
+            const input = document.getElementById('barcodeInput');
+            const code = (scannedCode || input.value).trim();
+            if (!code) return;
+
+            const catLetter = document.getElementById('catLetter').value;
+            const catNumber = document.getElementById('catNumber').value;
+            const idNum = document.getElementById('idNumber').value.trim();
+            const branch = document.getElementById('branchSelect').value;
+
+            if (!catLetter || !catNumber) {
+                playBeep(false);
+                showMessage("⚠️ يرجى اختيار التصنيف بالكامل أولاً!", true);
+                input.value = '';
+                return;
+            }
+            if (!idNum) {
+                playBeep(false);
+                showMessage("⚠️ يرجى كتابة رقم الهوية أولاً!", true);
+                input.value = '';
+                return;
+            }
+            if (!branch) {
+                playBeep(false);
+                showMessage("⚠️ اختيار اسم الفرع إجباري قبل التسجيل!", true);
+                input.value = '';
+                return;
+            }
+
+            const category = catLetter + catNumber;
+            const shortCode = code.slice(-9);
+
+            if (sims[code]) {
+                if (sims[code].category === category && sims[code].status === 'متاح') {
+                    playBeep(false);
+                    showMessage(`⚠️ الشريحة (${shortCode}) مسجلة مسبقاً بنفس التصنيف (${category})!`, true);
+                    input.value = '';
+                    return;
+                }
+            }
+
+            const now = Date.now();
+            if (code === lastScanned && (now - lastScanTime) < 2000) return;
+            lastScanned = code;
+            lastScanTime = now;
+
+            const company = detectCompany(code);
+            const inDate = document.getElementById('inDate').value || getTodayStr();
+            const inTime = getTimeStr();
+
+            db.ref('simInventory/' + code).set({
+                short: shortCode, company, category, idNumber: idNum, branch, customer: '', status: 'متاح', date: inDate, time: inTime, addedBy: currentUser.username
+            });
+
+            playBeep(true);
+            showMessage(`✅ تم إضافة (${shortCode}) | تصنيف: ${category} | فرع: ${branch}`);
+            input.value = '';
+        }
+
+        function handleOutDispense() {
+            if(currentUser.role !== 'admin') return;
+            const customer = document.getElementById('customerSelect').value;
+            if(!customer) { alert("يرجى اختيار العميل أولاً!"); return; }
+
+            const category = document.getElementById('outCategorySelect').value;
+            const qty = parseInt(document.getElementById('outQty').value, 10);
+            const outDate = document.getElementById('outDate').value || getTodayStr();
+            const outTime = document.getElementById('outTime').value || getTimeStr();
+            const price = parseFloat(document.getElementById('outPrice').value) || 0;
+            const total = (qty * price).toFixed(2);
+
+            if (!category || !qty || qty <= 0) {
+                playBeep(false);
+                showMessage("⚠️ يرجى التأكد من التصنيف والكمية!", true);
+                return;
+            }
+
+            const availableCodes = Object.keys(sims).filter(code => sims[code].status === 'متاح' && sims[code].category === category);
+            if (qty > availableCodes.length) {
+                playBeep(false);
+                showMessage(`❌ العدد المطلوب (${qty}) أكبر من المتاح في التصنيف ${category} (${availableCodes.length} شريحة)!`, true);
+                return;
+            }
+
+            const updates = {};
+            for (let i = 0; i < qty; i++) {
+                const code = availableCodes[i];
+                updates[`simInventory/${code}/status`] = 'منصرف';
+                updates[`simInventory/${code}/customer`] = customer;
+                updates[`simInventory/${code}/date`] = outDate;
+                updates[`simInventory/${code}/time`] = outTime;
+                updates[`simInventory/${code}/price`] = price;
+            }
+
+            db.ref().update(updates);
+            playBeep(true);
+            showMessage(`📤 تم صرف (${qty}) شريحة للعميل: ${customer} | الإجمالي: ${total}`);
+        }
+
+        function deleteSim(code) {
+            if(currentUser.role !== 'admin') return;
+            const shortCode = sims[code] ? sims[code].short : code;
+            if (confirm(`هل أنت متأكد من حذف الشريحة رقم (${shortCode})؟`)) {
+                db.ref('simInventory/' + code).remove();
+                showMessage(`🗑️ تم حذف الشريحة (${shortCode}) بنجاح.`);
+            }
+        }
+
+        function renderTable() {
+            const tbody = document.getElementById('simTable');
+            const search = document.getElementById('searchInput').value.trim().toLowerCase();
+            tbody.innerHTML = '';
+            let total = 0, inStock = 0, outStock = 0;
+
+            for (let code in sims) {
+                total++;
+                const item = sims[code];
+                if (item.status === 'متاح') inStock++;
+                else outStock++;
+
+                if (search && !code.toLowerCase().includes(search) && !(item.short && item.short.toLowerCase().includes(search)) && !(item.category && item.category.toLowerCase().includes(search)) && !(item.addedBy && item.addedBy.toLowerCase().includes(search))) continue;
+
+                const statusClass = item.status === 'متاح' ? 'status-in' : 'status-out';
+                const branchOrCustomer = item.status === 'متاح' ? `فرع: ${item.branch || '-'}` : `عميل: ${item.customer || '-'}${item.price ? ' (' + item.price + ')' : ''}`;
+                const dateTime = `${item.date || '-'}${item.time ? ' ' + item.time : ''}`;
+
+                tbody.innerHTML += `
+                    <tr>
+                        ${currentUser.role === 'admin' ? `<td><button class="btn-del-row" onclick="deleteSim('${code}')">❌</button></td>` : ''}
+                        <td><strong>${item.short || code.slice(-9)}</strong></td>
+                        <td><strong>${item.category || '-'}</strong></td>
+                        <td>${item.company || '-'}</td>
+                        <td>${item.idNumber || '-'}</td>
+                        <td>${branchOrCustomer}</td>
+                        <td class="${statusClass}">${item.status}</td>
+                        <td>${dateTime}</td>
+                        <td><span style="background:#e0f2fe; color:#0369a1; padding:2px 8px; border-radius:10px; font-weight:bold;">${item.addedBy || '-'}</span></td>
+                        <td>${code}</td>
+                    </tr>`;
+            }
+            document.getElementById('totalCount').innerText = total;
+            document.getElementById('inCount').innerText = inStock;
+            document.getElementById('outCount').innerText = outStock;
+        }
+
+        function exportCSV() {
+            let csv = "\uFEFFالباركود الكامل,الرقم المختصر,التصنيف,الشركة,رقم الهوية,الفرع,العميل,السعر,الحالة,الوقت والتاريخ,المستخدم\n";
+            for (let code in sims) {
+                const s = sims[code];
+                csv += `"='${code}","${s.short || ''}","${s.category || ''}","${s.company || ''}","'${s.idNumber || ''}","${s.branch || ''}","${s.customer || ''}","${s.price || ''}","${s.status || ''}","${s.date || ''} ${s.time || ''}","${s.addedBy || ''}"\n`;
+            }
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = "sim_inventory.csv";
+            link.click();
+        }
+
+        document.getElementById('barcodeInput').addEventListener('keypress', function(e) { if (e.key === 'Enter') handleInScan(); });
+        initApp();
+    </script>
+</body>
+</html>
