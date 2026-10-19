@@ -24,7 +24,9 @@
         .btn-del-branch { background: #dc2626; }
         
         .selected-badge { display: inline-block; background: #dbeafe; color: #1e3a8a; padding: 2px 10px; border-radius: 12px; font-size: 12px; margin-right: 6px; font-weight: bold; }
-        .btn-live { background: #2563eb; color: white; border: none; font-weight: bold; font-size: 15px; padding: 13px; cursor: pointer; margin-bottom: 10px; }
+        .cam-controls { display: flex; gap: 8px; margin-bottom: 10px; }
+        .btn-live { flex: 1; background: #2563eb; color: white; border: none; font-weight: bold; font-size: 15px; padding: 13px; cursor: pointer; margin: 0; }
+        .btn-torch { flex: 0 0 52px; background: #f59e0b; color: white; border: none; font-weight: bold; font-size: 18px; padding: 0; cursor: pointer; margin: 0; display: none; align-items: center; justify-content: center; border-radius: 8px; }
         .btn-manual { background: #1e293b; color: white; border: none; font-weight: bold; cursor: pointer; margin-top: 8px; padding: 12px; }
         .btn-out-submit { background: #dc2626; color: white; border: none; font-weight: bold; font-size: 15px; padding: 13px; cursor: pointer; margin-top: 10px; }
         .btn-export { background: #16a34a; color: white; border: none; font-weight: bold; margin-top: 12px; cursor: pointer; }
@@ -39,7 +41,6 @@
         .status-out { color: #dc2626; font-weight: bold; }
         #msg { padding: 12px; border-radius: 8px; text-align: center; font-weight: bold; display: none; margin-bottom: 10px; }
         
-        /* ترك أبعاد الكاميرا حرة لتعمل المكتبة بأقصى سرعة وبدون اختفاء المربع */
         #reader { width: 100%; margin-bottom: 10px; border-radius: 8px; overflow: hidden; }
 
         .mode-switch { background: #eff6ff; padding: 10px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #bfdbfe; }
@@ -70,9 +71,14 @@
 
         <!-- ================= قسم الوارد ================= -->
         <div id="inSection">
-            <button id="liveBtn" class="btn-live" onclick="toggleLiveCamera()">
-                🎥 تشغيل الكاميرا الخلفية (مسح الباركود)
-            </button>
+            <div class="cam-controls">
+                <button id="liveBtn" class="btn-live" onclick="toggleLiveCamera()">
+                    🎥 تشغيل الكاميرا السريعة (مسح الباركود)
+                </button>
+                <button id="torchBtn" class="btn-torch" onclick="toggleTorch()" title="تشغيل/إيقاف الكشاف">
+                    🔦
+                </button>
+            </div>
             <div id="reader"></div>
 
             <div class="row-flex">
@@ -221,12 +227,30 @@
         let branches = [];
         let customers = [];
 
-        const html5QrCode = new Html5Qrcode("reader");
+        // تهيئة محرك الكاميرا بأقصى سرعة مع تفعيل قارئ الهاردوير وتحديد باركود الشرائح فقط
+        const scannerConfig = {
+            experimentalFeatures: {
+                useBarCodeDetectorIfSupported: true
+            },
+            verbose: false
+        };
+        if (typeof Html5QrcodeSupportedFormats !== 'undefined') {
+            scannerConfig.formatsToSupport = [
+                Html5QrcodeSupportedFormats.CODE_128,
+                Html5QrcodeSupportedFormats.CODE_39,
+                Html5QrcodeSupportedFormats.ITF,
+                Html5QrcodeSupportedFormats.EAN_13,
+                Html5QrcodeSupportedFormats.CODABAR,
+                Html5QrcodeSupportedFormats.QR_CODE
+            ];
+        }
+
+        const html5QrCode = new Html5Qrcode("reader", scannerConfig);
         let isLiveRunning = false;
+        let isTorchOn = false;
         let lastScanned = "";
         let lastScanTime = 0;
 
-        // محرك الصوت الموحد لتخطي حظر الصوت في المتصفحات
         let audioCtx = null;
         function unlockAudio() {
             try {
@@ -252,7 +276,6 @@
                 gain.connect(audioCtx.destination);
 
                 if (success) {
-                    // نغمة سريعة وواضحة جداً تشبه قارئ الباركود الاحترافي
                     osc.type = "sine";
                     osc.frequency.setValueAtTime(1400, now);
                     osc.frequency.setValueAtTime(1800, now + 0.06);
@@ -262,7 +285,6 @@
                     osc.stop(now + 0.16);
                     if (navigator.vibrate) navigator.vibrate(70);
                 } else {
-                    // نغمة تنبيه منخفضة عند الخطأ أو تكرار الشريحة
                     osc.type = "sawtooth";
                     osc.frequency.setValueAtTime(220, now);
                     gain.gain.setValueAtTime(0.5, now);
@@ -440,16 +462,33 @@
             return 'شريحة اتصالات';
         }
 
+        async function toggleTorch() {
+            if (!isLiveRunning) return;
+            try {
+                isTorchOn = !isTorchOn;
+                await html5QrCode.applyVideoConstraints({
+                    advanced: [{ torch: isTorchOn }]
+                });
+                document.getElementById('torchBtn').style.background = isTorchOn ? "#16a34a" : "#f59e0b";
+            } catch (err) {
+                showMessage("⚠️ الفلاش غير مدعوم من المتصفح في هذا الجهاز", true);
+            }
+        }
+
         async function toggleLiveCamera() {
-            // تفعيل الصوت فور الضغط على الزر لضمان عمله مع الكاميرا
             unlockAudio();
 
             const btn = document.getElementById('liveBtn');
+            const torchBtn = document.getElementById('torchBtn');
+
             if (isLiveRunning) {
                 await html5QrCode.stop();
                 isLiveRunning = false;
-                btn.innerText = "🎥 تشغيل الكاميرا الخلفية (مسح الباركود)";
+                isTorchOn = false;
+                btn.innerText = "🎥 تشغيل الكاميرا السريعة (مسح الباركود)";
                 btn.style.background = "#2563eb";
+                torchBtn.style.display = "none";
+                torchBtn.style.background = "#f59e0b";
                 return;
             }
 
@@ -478,11 +517,12 @@
                 await html5QrCode.start(
                     { facingMode: "environment" },
                     {
-                        fps: 25,
+                        fps: 30,
+                        disableFlip: true,
                         qrbox: function(viewfinderWidth, viewfinderHeight) {
                             return {
-                                width: Math.floor(viewfinderWidth * 0.85),
-                                height: Math.floor(viewfinderHeight * 0.55)
+                                width: Math.floor(viewfinderWidth * 0.90),
+                                height: Math.floor(viewfinderHeight * 0.38)
                             };
                         }
                     },
@@ -491,6 +531,7 @@
                 isLiveRunning = true;
                 btn.innerText = "⏹️ إيقاف الكاميرا";
                 btn.style.background = "#dc2626";
+                torchBtn.style.display = "flex";
             } catch (err) {
                 showMessage("⚠️ تعذر تشغيل الكاميرا، تأكد من إعطاء الصلاحية.", true);
             }
@@ -502,7 +543,7 @@
             if (!code) return;
 
             const now = Date.now();
-            if (code === lastScanned && (now - lastScanTime) < 2000) return;
+            if (code === lastScanned && (now - lastScanTime) < 1500) return;
 
             const catLetter = document.getElementById('catLetter').value;
             const catNumber = document.getElementById('catNumber').value;
