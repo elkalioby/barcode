@@ -39,8 +39,9 @@
         .status-out { color: #dc2626; font-weight: bold; }
         #msg { padding: 12px; border-radius: 8px; text-align: center; font-weight: bold; display: none; margin-bottom: 10px; }
         
-        #reader { width: 100%; max-height: 200px; margin-bottom: 10px; border-radius: 8px; overflow: hidden; background: #000; }
-        #reader video { object-fit: cover; max-height: 200px; width: 100%; }
+        /* ضبط إطار الكاميرا ليكون أوسع وأسرع في القراءة */
+        #reader { width: 100%; max-height: 230px; margin-bottom: 10px; border-radius: 8px; overflow: hidden; background: #000; }
+        #reader video { object-fit: cover; max-height: 230px; width: 100%; }
 
         .mode-switch { background: #eff6ff; padding: 10px; border-radius: 8px; margin-bottom: 12px; border: 1px solid #bfdbfe; }
     </style>
@@ -98,7 +99,6 @@
             <label>وقت الوارد (تلقائي):</label>
             <input type="text" id="inTimeDisplay" readonly style="background:#e2e8f0; font-weight:bold; color:#1e3a8a;">
 
-            <!-- خانات التصنيف تبدأ فارغة تماماً -->
             <label>التصنيف (من A01 إلى Z100):</label>
             <div class="row-flex">
                 <select id="catLetter" onchange="saveStickyValues()">
@@ -112,7 +112,6 @@
             <label>رقم الهوية:</label>
             <input type="text" id="idNumber" placeholder="اكتب رقم الهوية..." oninput="saveStickyValues()">
 
-            <!-- خانة الفرع تبدأ فارغة واختيارها إجباري -->
             <label>الفرع: <span id="activeBranchLabel" class="selected-badge">لم يتم الاختيار</span></label>
             <div class="branch-row">
                 <select id="branchSelect" onchange="onBranchChange()">
@@ -249,7 +248,6 @@
             for (let i = 65; i <= 90; i++) letterSel.innerHTML += `<option value="${String.fromCharCode(i)}">${String.fromCharCode(i)}</option>`;
             for (let n = 1; n <= 100; n++) numSel.innerHTML += `<option value="${n < 10 ? '0' + n : n}">${n < 10 ? '0' + n : n}</option>`;
 
-            // جعلهما يبدآن فارغين تماماً
             letterSel.value = "";
             numSel.value = "";
 
@@ -281,7 +279,7 @@
                 if(target && branches.includes(target)) {
                     sel.value = target;
                 } else {
-                    sel.value = ""; // يبدأ فارغاً إجبارياً
+                    sel.value = "";
                 }
             }
             badge.innerText = sel.value ? sel.value : 'لم يتم الاختيار';
@@ -405,7 +403,6 @@
             return 'شريحة اتصالات';
         }
 
-        // التحقق الإجباري للفرع والتصنيف والهوية قبل تشغيل الكاميرا
         async function toggleLiveCamera() {
             const btn = document.getElementById('liveBtn');
             if (isLiveRunning) {
@@ -438,7 +435,8 @@
             }
 
             try {
-                const qrboxSize = window.innerWidth < 500 ? { width: 250, height: 75 } : { width: 300, height: 85 };
+                // تم توسيع إطار الكاميرا ليكون مريحاً وسريعاً جداً في التقاط الباركود
+                const qrboxSize = window.innerWidth < 500 ? { width: 280, height: 110 } : { width: 350, height: 130 };
                 await html5QrCode.start(
                     { facingMode: "environment" },
                     { fps: 20, qrbox: qrboxSize, aspectRatio: 1.777 },
