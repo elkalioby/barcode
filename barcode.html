@@ -58,6 +58,7 @@
         .bulk-edit-bar { display: none; background: #eff6ff; border: 2px solid #3b82f6; padding: 12px; border-radius: 10px; margin-top: 12px; margin-bottom: 8px; }
         .bulk-title { font-weight: bold; color: #1e3a8a; font-size: 14px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
         .btn-bulk-save { background: #16a34a; color: white; border: none; font-weight: bold; font-size: 14px; padding: 11px; cursor: pointer; margin-top: 6px; }
+        .btn-whatsapp-send { background: #25D366; color: white; border: none; font-weight: bold; font-size: 14px; padding: 11px; cursor: pointer; margin-top: 8px; display: flex; align-items: center; justify-content: center; gap: 6px; }
         tr.selected-row { background-color: #dbeafe !important; }
     </style>
 </head>
@@ -235,7 +236,7 @@
         <div class="card">
             <div id="catMsg"></div>
 
-            <!-- الفلاتر العلوية (الحالة + التصنيف) -->
+            <!-- الفلاتر العلوية (الحالة + التصنيف + الفرع) -->
             <div class="row-flex">
                 <div>
                     <label style="margin-top:0;">فلتر الحالة:</label>
@@ -253,13 +254,20 @@
                 </div>
             </div>
 
+            <div>
+                <label style="margin-top:8px;">فلتر الفرع:</label>
+                <select id="filterBranch" onchange="onFilterChange()">
+                    <option value="all">الكل (جميع الفروع)</option>
+                </select>
+            </div>
+
             <!-- مربع البحث البارز في تاب تغيير التصنيف -->
             <div class="search-box-wrap">
                 <label style="margin-top:0; margin-bottom:5px; color:#1e3a8a;">🔍 البحث السريع في الشرائح:</label>
                 <input type="text" id="catSearchInput" placeholder="ابحث بالباركود الكامل أو المختصر أو الفرع أو الهوية..." oninput="onFilterChange()">
             </div>
 
-            <!-- شريط تغيير التصنيف الذي يظهر عند تحديد شريحة أو أكثر -->
+            <!-- شريط تغيير التصنيف والإرسال عبر واتساب الذي يظهر عند تحديد شريحة أو أكثر -->
             <div id="bulkEditBar" class="bulk-edit-bar">
                 <div class="bulk-title">
                     <span>✅ تم تحديد (<span id="selectedCountBadge">0</span>) شريحة</span>
@@ -275,6 +283,7 @@
                     </select>
                 </div>
                 <button type="button" class="btn-bulk-save" onclick="applyBulkCategoryChange()">💾 حفظ وتغيير التصنيف للمحدد</button>
+                <button type="button" class="btn-whatsapp-send" onclick="sendSelectedToWhatsApp()">📲 إرسال الكود الكامل للمحدد عبر واتساب</button>
             </div>
 
             <div class="table-wrap">
@@ -414,7 +423,12 @@
             updateCatFilterDropdown();
             renderCategoryTabTable();
         });
-        db.ref('simBranches').on('value', snap => { const val = snap.val(); branches = val ? Object.values(val) : []; renderBranches(); });
+        db.ref('simBranches').on('value', snap => {
+            const val = snap.val();
+            branches = val ? Object.values(val) : [];
+            renderBranches();
+            updateCatFilterDropdown();
+        });
         db.ref('simCustomers').on('value', snap => { const val = snap.val(); customers = val ? Object.values(val) : []; renderCustomers(); });
 
         function initApp() {
@@ -477,9 +491,20 @@
             const currentVal = sel.value || 'all';
             const catCounts = {};
 
+            const branchSel = document.getElementById('filterBranch');
+            const currentBranchVal = branchSel ? (branchSel.value || 'all') : 'all';
+            const branchCounts = {};
+
+            branches.forEach(b => {
+                if (b) branchCounts[b] = 0;
+            });
+
             for (let code in sims) {
                 const c = sims[code].category || 'بدون تصنيف';
                 catCounts[c] = (catCounts[c] || 0) + 1;
+
+                const b = sims[code].branch || 'بدون فرع';
+                branchCounts[b] = (branchCounts[b] || 0) + 1;
             }
 
             sel.innerHTML = `<option value="all">الكل (جميع التصنيفات)</option>`;
@@ -487,10 +512,23 @@
                 sel.innerHTML += `<option value="${cat}">${cat} (${catCounts[cat]})</option>`;
             });
 
-            if (currentVal === 'all' || catCounts[currentVal]) {
+            if (currentVal === 'all' || catCounts[currentVal] !== undefined) {
                 sel.value = currentVal;
             } else {
                 sel.value = 'all';
+            }
+
+            if (branchSel) {
+                branchSel.innerHTML = `<option value="all">الكل (جميع الفروع)</option>`;
+                Object.keys(branchCounts).sort().forEach(br => {
+                    branchSel.innerHTML += `<option value="${br}">${br} (${branchCounts[br]})</option>`;
+                });
+
+                if (currentBranchVal === 'all' || branchCounts[currentBranchVal] !== undefined) {
+                    branchSel.value = currentBranchVal;
+                } else {
+                    branchSel.value = 'all';
+                }
             }
         }
 
@@ -502,6 +540,8 @@
         function getFilteredCodesForCatTab() {
             const statusFilter = document.getElementById('filterStatus').value;
             const catFilter = document.getElementById('filterCategory').value;
+            const branchFilterElem = document.getElementById('filterBranch');
+            const branchFilter = branchFilterElem ? branchFilterElem.value : 'all';
             const searchInput = document.getElementById('catSearchInput');
             const search = searchInput ? searchInput.value.trim().toLowerCase() : '';
             const result = [];
@@ -509,8 +549,11 @@
             for (let code in sims) {
                 const item = sims[code];
                 const itemCat = item.category || 'بدون تصنيف';
+                const itemBranch = item.branch || 'بدون فرع';
+
                 if (statusFilter !== 'all' && item.status !== statusFilter) continue;
                 if (catFilter !== 'all' && itemCat !== catFilter) continue;
+                if (branchFilter !== 'all' && itemBranch !== branchFilter) continue;
 
                 if (search) {
                     const matchCode = code.toLowerCase().includes(search);
@@ -655,6 +698,14 @@
                 playBeep(false);
                 showCatMessage("❌ حدث خطأ أثناء تحديث التصنيف، حاول مرة أخرى.", true);
             });
+        }
+
+        // إرسال الأكواد الكاملة فقط للشرائح المحددة عبر واتساب
+        function sendSelectedToWhatsApp() {
+            if (selectedSimCodes.size === 0) return;
+            const codesOnlyText = Array.from(selectedSimCodes).join('\n');
+            const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(codesOnlyText)}`;
+            window.open(whatsappUrl, '_blank');
         }
 
         function onBranchChange() {
